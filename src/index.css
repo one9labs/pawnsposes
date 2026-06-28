@@ -26,4 +26,27 @@
   .last-move-highlight {
     @apply bg-chess-highlight bg-opacity-30;
   }
+
+  .achievement-track {
+    animation: achievement-scroll 42s linear infinite;
+  }
+
+  .achievement-marquee:hover .achievement-track {
+    animation-play-state: paused;
+  }
+}
+
+@keyframes achievement-scroll {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .achievement-track {
+    animation: none;
+  }
 }
