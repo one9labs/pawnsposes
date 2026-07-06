@@ -53,6 +53,11 @@ class GeminiService {
         } catch (error: any) {
           lastError = error;
 
+          // Spend cap errors apply to the whole project, so no model or retry can succeed
+          if (this.isSpendCapError(error)) {
+            throw this.createGeminiError(error);
+          }
+
           // Check if this is a rate limit or overload error
           const isRateLimitError = this.isRateLimitError(error);
           const isRetryableError = isRateLimitError || this.isRetryableError(error);
@@ -100,6 +105,14 @@ class GeminiService {
   private createGeminiError(error: any): ReportGenerationError {
     const errorMessage = error?.message?.toLowerCase() || '';
 
+    if (this.isSpendCapError(error)) {
+      return new ReportGenerationError(
+        'Your Gemini API project has exceeded its monthly spending cap. Please raise or remove the spend cap at https://aistudio.google.com/, or switch to an API key/project with available billing.',
+        'RATE_LIMIT',
+        error
+      );
+    }
+
     if (error?.status === 429 || errorMessage.includes('quota exceeded')) {
       return new ReportGenerationError(
         'Gemini quota exceeded for the configured model. Please use an API key/project with available Gemini quota, enable billing, or set REACT_APP_GEMINI_MODEL to a model with available quota.',
@@ -137,6 +150,13 @@ class GeminiService {
       'AI_ERROR',
       error
     );
+  }
+
+  private isSpendCapError(error: any): boolean {
+    if (!error) return false;
+
+    const errorMessage = error.message?.toLowerCase() || '';
+    return errorMessage.includes('spending cap') || errorMessage.includes('spend cap');
   }
 
   private isRateLimitError(error: any): boolean {

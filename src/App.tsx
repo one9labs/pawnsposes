@@ -2,6 +2,7 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import Navbar from './components/Navbar';
+import WhatsAppFloatingButton from './components/WhatsAppFloatingButton';
 import LandingPage from './pages/LandingPage';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
@@ -92,6 +93,7 @@ function App() {
             {/* Catch all route */}
             <Route path="*" element={<Navigate to="/" />} />
           </Routes>
+          <WhatsAppFloatingButton />
         </div>
       </Router>
     </AuthProvider>
