@@ -33,7 +33,6 @@ const Navbar: React.FC = () => {
     { name: 'Dashboard', href: '/dashboard' },
     { name: 'Analyze', href: '/analyze' },
     { name: 'Puzzles', href: '/puzzles' },
-    { name: 'Reports', href: '/reports' },
   ];
 
   const coachNavigation = [
