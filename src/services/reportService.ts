@@ -554,42 +554,54 @@ ${report.improvementPlan.immediateActions.map(action => `- **${action.priority.t
     `.trim();
   }
 
-  // Helper method to export report as PDF using screenshot approach (preserves exact visual design)
-  async exportReportAsPDF(reportElement: HTMLElement, report: ChessReport): Promise<void> {
-    try {
-      console.log('Starting PDF export using screenshot approach...');
-      
-      // Import html2canvas and jsPDF dynamically
-      const html2canvas = (await import('html2canvas')).default;
-      const jsPDF = (await import('jspdf')).default;
-      
-      // Temporarily hide action buttons and other non-printable elements
-      const elementsToHide = reportElement.querySelectorAll('.no-print, button, .export-dropdown, .back-button');
-      const originalDisplayValues: string[] = [];
-      
-      elementsToHide.forEach((element, index) => {
+  private async createPdfFromReport(reportElement: HTMLElement, report: ChessReport): Promise<{
+    pdf: any;
+    filename: string;
+    restore: () => void;
+  }> {
+    console.log('Starting PDF generation using screenshot approach...');
+
+    const html2canvas = (await import('html2canvas')).default;
+    const jsPDF = (await import('jspdf')).default;
+
+    const elementsToHide = reportElement.querySelectorAll('.no-print, button, .export-dropdown, .back-button');
+    const hiddenElements = reportElement.querySelectorAll('[style*="display: none"], [style*="display:none"]');
+
+    const originalDisplayValues = new Map<HTMLElement, string>();
+    const originalVisibilityValues = new Map<HTMLElement, string>();
+
+    const restore = () => {
+      elementsToHide.forEach((element) => {
         const htmlElement = element as HTMLElement;
-        originalDisplayValues[index] = htmlElement.style.display;
+        htmlElement.style.display = originalDisplayValues.get(htmlElement) ?? '';
+      });
+
+      hiddenElements.forEach((element) => {
+        const htmlElement = element as HTMLElement;
+        htmlElement.style.display = originalDisplayValues.get(htmlElement) ?? '';
+        htmlElement.style.visibility = originalVisibilityValues.get(htmlElement) ?? '';
+      });
+    };
+
+    try {
+      elementsToHide.forEach((element) => {
+        const htmlElement = element as HTMLElement;
+        originalDisplayValues.set(htmlElement, htmlElement.style.display);
         htmlElement.style.display = 'none';
       });
-      
-      // Ensure all content is visible and properly styled
-      const hiddenElements = reportElement.querySelectorAll('[style*="display: none"], [style*="display:none"]');
-      const originalHiddenDisplayValues: string[] = [];
-      
-      hiddenElements.forEach((element, index) => {
+
+      hiddenElements.forEach((element) => {
         const htmlElement = element as HTMLElement;
-        originalHiddenDisplayValues[index] = htmlElement.style.display;
+        originalDisplayValues.set(htmlElement, htmlElement.style.display);
+        originalVisibilityValues.set(htmlElement, htmlElement.style.visibility);
         htmlElement.style.display = 'block';
         htmlElement.style.visibility = 'visible';
       });
-      
-      // Wait for any images or content to load
+
       await new Promise(resolve => setTimeout(resolve, 500));
-      
-      // Configure html2canvas options for high quality
+
       const canvas = await html2canvas(reportElement, {
-        scale: 2, // Higher resolution
+        scale: 2,
         useCORS: true,
         allowTaint: true,
         backgroundColor: '#ffffff',
@@ -600,30 +612,21 @@ ${report.improvementPlan.immediateActions.map(action => `- **${action.priority.t
         scrollX: 0,
         scrollY: 0
       });
-      
-      console.log('Screenshot captured successfully');
-      
-      // Calculate PDF dimensions
-      const imgWidth = 210; // A4 width in mm
-      const pageHeight = 297; // A4 height in mm
+
+      const imgWidth = 210;
+      const pageHeight = 297;
       const imgHeight = (canvas.height * imgWidth) / canvas.width;
-      
-      // Create PDF
       const pdf = new jsPDF('p', 'mm', 'a4');
-      
+
       if (imgHeight <= pageHeight) {
-        // Single page
         pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, imgWidth, imgHeight);
       } else {
-        // Multiple pages
         let heightLeft = imgHeight;
         let position = 0;
-        
-        // First page
+
         pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, position, imgWidth, imgHeight);
         heightLeft -= pageHeight;
-        
-        // Additional pages
+
         while (heightLeft >= 0) {
           position = heightLeft - imgHeight;
           pdf.addPage();
@@ -631,25 +634,37 @@ ${report.improvementPlan.immediateActions.map(action => `- **${action.priority.t
           heightLeft -= pageHeight;
         }
       }
-      
-      // Generate filename
+
       const filename = `chess-report-${report.username}-${report.generatedAt.toISOString().split('T')[0]}.pdf`;
-      
-      // Save the PDF
+
+      return { pdf, filename, restore };
+    } catch (error) {
+      restore();
+      console.error('Error generating PDF:', error);
+      throw new Error('Failed to generate PDF. Please try again.');
+    }
+  }
+
+  async generateReportPdfBlob(reportElement: HTMLElement, report: ChessReport): Promise<{ blob: Blob; filename: string }> {
+    const { pdf, filename, restore } = await this.createPdfFromReport(reportElement, report);
+
+    try {
+      return { blob: pdf.output('blob'), filename };
+    } finally {
+      restore();
+    }
+  }
+
+  // Helper method to export report as PDF using screenshot approach (preserves exact visual design)
+  async exportReportAsPDF(reportElement: HTMLElement, report: ChessReport): Promise<void> {
+    try {
+      const { pdf, filename, restore } = await this.createPdfFromReport(reportElement, report);
+
       pdf.save(filename);
-      
+
       console.log('PDF saved successfully');
-      
-      // Restore original display values
-      elementsToHide.forEach((element, index) => {
-        const htmlElement = element as HTMLElement;
-        htmlElement.style.display = originalDisplayValues[index];
-      });
-      
-      hiddenElements.forEach((element, index) => {
-        const htmlElement = element as HTMLElement;
-        htmlElement.style.display = originalHiddenDisplayValues[index];
-      });
+
+      restore();
       
     } catch (error) {
       console.error('Error generating PDF:', error);

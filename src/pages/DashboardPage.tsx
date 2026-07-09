@@ -10,12 +10,13 @@ import {
   Plus,
   ArrowRight,
   RefreshCw,
-  CheckCircle,
-  AlertCircle
+  AlertCircle,
+  FileText
 } from 'lucide-react';
 import { profileAnalysisService } from '../services/profileAnalysisService';
 import { PlayerAnalysisProfile } from '../types/profileAnalysis';
-import { ReportGenerationProgress } from '../types/report';
+import { GameReportRequest, ReportGenerationProgress } from '../types/report';
+import ReportPopup from '../components/ReportPopup';
 
 const DashboardPage: React.FC = () => {
   const { currentUser } = useAuth();
@@ -28,6 +29,7 @@ const DashboardPage: React.FC = () => {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isLoadingProfile, setIsLoadingProfile] = useState(true);
+  const [isReportPopupOpen, setIsReportPopupOpen] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -94,8 +96,8 @@ const DashboardPage: React.FC = () => {
     }
   ];
 
-  const saveAndAnalyze = async () => {
-    if (!currentUser?.id || !username.trim()) return;
+  const saveAndAnalyze = async (request: GameReportRequest) => {
+    if (!currentUser?.id || !request.username.trim()) return;
 
     setIsRefreshing(true);
     setError(null);
@@ -106,9 +108,10 @@ const DashboardPage: React.FC = () => {
     try {
       const result = await profileAnalysisService.setupProfile({
         userId: currentUser.id,
-        platform,
-        username: username.trim(),
-        gameCount: 20
+        platform: request.platform,
+        username: request.username.trim(),
+        gameCount: request.gameCount,
+        rated: request.rated
       });
       setProfile(result.profile);
       setMessage(`Analyzed ${result.newGamesCount} games and saved your profile analysis.`);
@@ -178,37 +181,29 @@ const DashboardPage: React.FC = () => {
                   : 'Your first report is not ready yet. Add your chess username to analyze your latest 20 games before the dashboard fills in.'}
               </CardDescription>
             </div>
-            {profile && (
-              <Button type="button" variant="outline" onClick={refreshAnalysis} disabled={isRefreshing}>
-                <RefreshCw className={`w-4 h-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
-                Refresh
+            <div className="flex flex-col gap-3 sm:flex-row">
+              {profile && (
+                <Button type="button" variant="outline" onClick={refreshAnalysis} disabled={isRefreshing}>
+                  <RefreshCw className={`w-4 h-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
+                  Refresh
+                </Button>
+              )}
+              <Button
+                type="button"
+                onClick={() => setIsReportPopupOpen(true)}
+                disabled={isRefreshing}
+                className="bg-emerald-600 text-white hover:bg-emerald-700"
+              >
+                <FileText className="w-4 h-4 mr-2" />
+                {report ? 'Open PDF Viewer' : 'Open Report Form'}
               </Button>
-            )}
+            </div>
           </div>
         </CardHeader>
         <CardContent>
           {!profile && (
-            <div className="grid grid-cols-1 gap-3 md:grid-cols-[160px_1fr_auto]">
-              <select
-                value={platform}
-                onChange={(event) => setPlatform(event.target.value as 'lichess' | 'chess.com')}
-                className="h-10 rounded-md border border-gray-300 bg-white px-3 text-sm"
-                disabled={isRefreshing}
-              >
-                <option value="lichess">Lichess</option>
-                <option value="chess.com">Chess.com</option>
-              </select>
-              <input
-                value={username}
-                onChange={(event) => setUsername(event.target.value)}
-                placeholder="Chess username"
-                className="h-10 rounded-md border border-gray-300 px-3 text-sm"
-                disabled={isRefreshing}
-              />
-              <Button type="button" onClick={saveAndAnalyze} disabled={isRefreshing || !username.trim()}>
-                {isRefreshing ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <CheckCircle className="w-4 h-4 mr-2" />}
-                Save and Analyze 20
-              </Button>
+            <div className="rounded-2xl border border-dashed border-emerald-200 bg-emerald-50 p-5 text-sm text-emerald-900">
+              Your report form now opens in the popup. Use the green button above to enter your chess account, choose game settings, and generate the report.
             </div>
           )}
 
@@ -377,6 +372,19 @@ const DashboardPage: React.FC = () => {
         </Card>
       </div>
       )}
+
+      <ReportPopup
+        isOpen={isReportPopupOpen}
+        onClose={() => setIsReportPopupOpen(false)}
+        report={report}
+        initialPlatform={platform}
+        initialUsername={username}
+        onSaveAndAnalyze={saveAndAnalyze}
+        isRefreshing={isRefreshing}
+        progress={progress}
+        message={message}
+        error={error}
+      />
     </div>
   );
 };
