@@ -1,25 +1,31 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/Card';
+import { Card, CardContent } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
+import EmptyState from '../components/ui/EmptyState';
+import Skeleton from '../components/ui/Skeleton';
 import { 
   CalendarDays,
-  ExternalLink,
   Gamepad2,
   Hash,
   Medal,
   TrendingUp, 
   RefreshCw,
   AlertCircle,
-  FileText
+  FileText,
+  SearchX
 } from 'lucide-react';
 import { profileAnalysisService } from '../services/profileAnalysisService';
 import { PlayerAnalysisProfile } from '../types/profileAnalysis';
 import { GameReportRequest, ReportGenerationProgress } from '../types/report';
 import ReportPopup from '../components/ReportPopup';
+import { persistSelectedGame } from '../utils/selectedGame';
+import { ChessGame } from '../types/game';
 
 const DashboardPage: React.FC = () => {
   const { currentUser } = useAuth();
+  const navigate = useNavigate();
   const [profile, setProfile] = useState<PlayerAnalysisProfile | null>(null);
   const [platform, setPlatform] = useState<'lichess' | 'chess.com'>('lichess');
   const [username, setUsername] = useState('');
@@ -29,6 +35,7 @@ const DashboardPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [isLoadingProfile, setIsLoadingProfile] = useState(true);
   const [isReportPopupOpen, setIsReportPopupOpen] = useState(false);
+  const [chessAvatarUrl, setChessAvatarUrl] = useState<string | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -55,6 +62,40 @@ const DashboardPage: React.FC = () => {
   }, [currentUser?.id]);
 
   const report = profile?.report || null;
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadChessAvatar = async () => {
+      if (!profile?.username || profile.platform !== 'chess.com') {
+        setChessAvatarUrl(null);
+        return;
+      }
+
+      try {
+        const response = await fetch(`https://api.chess.com/pub/player/${profile.username}`);
+        if (!response.ok) {
+          if (isMounted) setChessAvatarUrl(null);
+          return;
+        }
+        const data = await response.json();
+        if (isMounted) {
+          setChessAvatarUrl(typeof data?.avatar === 'string' ? data.avatar : null);
+        }
+      } catch (avatarError) {
+        console.error('Could not load chess.com avatar:', avatarError);
+        if (isMounted) {
+          setChessAvatarUrl(null);
+        }
+      }
+    };
+
+    loadChessAvatar();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [profile?.platform, profile?.username]);
+
 
   const userGames = useMemo(() => profile?.games || [], [profile?.games]);
 
@@ -72,7 +113,9 @@ const DashboardPage: React.FC = () => {
   };
 
   const getOpponentName = (game: any) => {
-    return getIsUserWhite(game) ? game.black?.name || 'Unknown opponent' : game.white?.name || 'Unknown opponent';
+    const opponent = getIsUserWhite(game) ? game.black?.name : game.white?.name;
+    if (!opponent || opponent === 'Unknown') return 'Opponent';
+    return opponent;
   };
 
   const getGameResult = (game: any) => {
@@ -86,15 +129,39 @@ const DashboardPage: React.FC = () => {
   const wins = userGames.filter(game => getGameResult(game) === 'Win').length;
   const draws = userGames.filter(game => getGameResult(game) === 'Draw').length;
   const losses = userGames.filter(game => getGameResult(game) === 'Loss').length;
-  const ratings = userGames.map(getUserRating).filter((rating): rating is number => typeof rating === 'number');
   const opponentRatings = userGames.map(getOpponentRating).filter((rating): rating is number => typeof rating === 'number');
+
+  const classifyTimeControl = (timeControl?: string): 'bullet' | 'rapid' | 'other' => {
+    if (!timeControl) return 'other';
+    const normalized = timeControl.toLowerCase();
+    if (normalized.includes('bullet')) return 'bullet';
+    if (normalized.includes('rapid')) return 'rapid';
+
+    const plusMatch = normalized.match(/(\d+)\+(\d+)/);
+    const baseMatch = normalized.match(/^(\d+)$/);
+    const baseSeconds = plusMatch
+      ? parseInt(plusMatch[1], 10)
+      : baseMatch
+        ? parseInt(baseMatch[1], 10)
+        : null;
+
+    if (baseSeconds === null || Number.isNaN(baseSeconds)) return 'other';
+    if (baseSeconds < 180) return 'bullet';
+    if (baseSeconds >= 600) return 'rapid';
+    return 'other';
+  };
+
+  const currentRapidRating = userGames
+    .find((game) => classifyTimeControl(game.timeControl) === 'rapid' && typeof getUserRating(game) === 'number');
+  const currentBulletRating = userGames
+    .find((game) => classifyTimeControl(game.timeControl) === 'bullet' && typeof getUserRating(game) === 'number');
 
   const gameStats = {
     wins,
     draws,
     losses,
-    latestRating: ratings[0] ?? null,
-    peakRating: ratings.length ? Math.max(...ratings) : null,
+    rapidRating: currentRapidRating ? getUserRating(currentRapidRating) ?? null : null,
+    bulletRating: currentBulletRating ? getUserRating(currentBulletRating) ?? null : null,
     averageOpponentRating: opponentRatings.length
       ? Math.round(opponentRatings.reduce((sum, rating) => sum + rating, 0) / opponentRatings.length)
       : null,
@@ -107,28 +174,28 @@ const DashboardPage: React.FC = () => {
       value: userGames.length.toString(),
       change: profile?.lastCheckedAt ? `Synced ${new Date(profile.lastCheckedAt).toLocaleDateString()}` : 'Add your chess username',
       icon: <Gamepad2 className="w-5 h-5" />,
-      color: 'text-blue-600'
+      color: 'text-sky-600 dark:text-sky-300'
     },
     {
-      title: 'Latest Rating',
-      value: gameStats.latestRating ? gameStats.latestRating.toLocaleString() : '-',
-      change: 'From the most recent game',
+      title: 'Current Rapid Rating',
+      value: gameStats.rapidRating ? gameStats.rapidRating.toLocaleString() : '-',
+      change: 'Most recent rapid game',
       icon: <TrendingUp className="w-5 h-5" />,
-      color: 'text-green-600'
+      color: 'text-emerald-600 dark:text-emerald-300'
     },
     {
-      title: 'Peak Rating',
-      value: gameStats.peakRating ? gameStats.peakRating.toLocaleString() : '-',
-      change: 'Highest rating seen in the synced games',
+      title: 'Current Bullet Rating',
+      value: gameStats.bulletRating ? gameStats.bulletRating.toLocaleString() : '-',
+      change: 'Most recent bullet game',
       icon: <Medal className="w-5 h-5" />,
-      color: 'text-orange-600'
+      color: 'text-amber-600 dark:text-amber-300'
     },
     {
       title: 'Average Opponent Rating',
       value: gameStats.averageOpponentRating ? gameStats.averageOpponentRating.toLocaleString() : '-',
       change: 'Pulled directly from the game archives',
       icon: <Hash className="w-5 h-5" />,
-      color: 'text-purple-600'
+      color: 'text-cyan-600 dark:text-cyan-300'
     }
   ];
 
@@ -181,224 +248,232 @@ const DashboardPage: React.FC = () => {
     }
   };
 
+  const DashboardSkeleton = () => (
+    <div className="mb-8 grid grid-cols-1 gap-6 lg:grid-cols-4">
+      {[...Array(4)].map((_, index) => (
+        <div key={index} className="surface-card p-5">
+          <Skeleton className="h-3 w-24" />
+          <Skeleton className="mt-4 h-8 w-20" />
+          <Skeleton className="mt-4 h-3 w-32" />
+        </div>
+      ))}
+    </div>
+  );
+
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      {/* Welcome Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">
-          Welcome back, {currentUser?.displayName}!
-        </h1>
-        <p className="text-gray-600 mt-2">
-          Here's your chess profile dashboard
-        </p>
-      </div>
+    <div className="section-shell space-y-12 py-10 sm:space-y-14 sm:py-12">
+      <section className="aurora-panel pb-2">
+        <div className="grid gap-10 lg:grid-cols-[1.5fr_auto] lg:items-center lg:gap-16">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-700 dark:text-sky-300">Player cockpit</p>
+            <h1 className="mt-3 font-display text-3xl font-semibold leading-tight text-slate-900 sm:text-4xl dark:text-white">
+              {currentUser?.displayName}, your chess command center
+            </h1>
+            <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-700 sm:text-base dark:text-slate-300">
+              Track performance, sync game archives, and jump straight into training decisions without switching contexts.
+            </p>
+            <div className="mt-7 flex flex-wrap gap-3">
+              {profile && (
+                <Button type="button" variant="outline" onClick={refreshAnalysis} disabled={isRefreshing} className="cursor-pointer border-sky-200/80 bg-white/70 text-slate-800 hover:bg-white dark:border-slate-600 dark:bg-slate-800/70 dark:text-slate-100 dark:hover:bg-slate-800">
+                  <RefreshCw className={`mr-2 h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+                  Refresh profile
+                </Button>
+              )}
+              <Button type="button" onClick={() => setIsReportPopupOpen(true)} disabled={isRefreshing} className="cursor-pointer bg-sky-600 text-white hover:bg-sky-700">
+                <FileText className="mr-2 h-4 w-4" />
+                {report ? 'Open report viewer' : 'Connect chess account'}
+              </Button>
+            </div>
+            <p className="mt-4 text-sm text-slate-600 dark:text-slate-300">
+              {profile?.lastCheckedAt
+                ? `Last sync: ${new Date(profile.lastCheckedAt).toLocaleString()}`
+                : 'No sync yet.'}
+            </p>
+            {progress && (
+              <div className="mt-4 max-w-xl">
+                <div className="mb-2 flex items-center justify-between text-xs text-slate-600 dark:text-slate-300">
+                  <span>{progress.message}</span>
+                  <span>{progress.progress}%</span>
+                </div>
+                <div className="h-2 rounded-full bg-sky-100/80 dark:bg-slate-700">
+                  <div className="h-2 rounded-full bg-sky-600 transition-all" style={{ width: `${progress.progress}%` }} />
+                </div>
+              </div>
+            )}
+            {message && <p className="mt-4 text-sm text-emerald-700 dark:text-emerald-300">{message}</p>}
+            {error && (
+              <p className="mt-4 flex items-center text-sm text-red-700 dark:text-red-300">
+                <AlertCircle className="mr-2 h-4 w-4" />
+                {error}
+              </p>
+            )}
+          </div>
+          <div className="flex flex-col items-center gap-4 text-center lg:items-end lg:text-right">
+            <img
+              src={chessAvatarUrl || '/pnp_logo.jpeg'}
+              alt="Player avatar"
+              className="h-32 w-32 rounded-full border-4 border-white object-cover shadow-soft sm:h-36 sm:w-36 dark:border-slate-700"
+            />
+            <div className="text-sm leading-6 text-slate-700 dark:text-slate-300">
+              <span className="font-semibold text-slate-900 dark:text-white">{profile?.username || currentUser?.displayName}</span>
+              {profile ? ` · ${profile.platform}` : ''}
+            </div>
+          </div>
+        </div>
+      </section>
 
       {isLoadingProfile && (
-        <Card className="mb-8 border-blue-200 bg-blue-50">
-          <CardContent className="flex items-center gap-3 p-5 text-blue-900">
+        <Card className="border-primary-200 bg-primary-50 dark:border-slate-700 dark:bg-slate-900/60">
+          <CardContent className="flex items-center gap-3 p-6 text-primary-900 dark:text-slate-100">
             <RefreshCw className="h-5 w-5 animate-spin" />
             <div>
               <p className="font-medium">Loading your chess profile</p>
-              <p className="text-sm text-blue-700">We are syncing your latest games from the chess API.</p>
+              <p className="mt-1 text-sm text-primary-700 dark:text-slate-300">Syncing your full game history from supported APIs.</p>
             </div>
           </CardContent>
         </Card>
       )}
+      {isLoadingProfile && <DashboardSkeleton />}
 
-      {!isLoadingProfile && (
-      <Card className="mb-8">
-        <CardHeader>
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-            <div>
-              <CardTitle>Chess Profile</CardTitle>
-              <CardDescription>
-                {profile
-                  ? 'Your saved games and profile stats are synced from the chess API.'
-                  : 'Add your chess username to load your latest games and ratings from the chess API.'}
-              </CardDescription>
-            </div>
-            <div className="flex flex-col gap-3 sm:flex-row">
-              {profile && (
-                <Button type="button" variant="outline" onClick={refreshAnalysis} disabled={isRefreshing}>
-                  <RefreshCw className={`w-4 h-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
-                  Refresh
-                </Button>
-              )}
-              <Button
-                type="button"
-                onClick={() => setIsReportPopupOpen(true)}
-                disabled={isRefreshing}
-                className="bg-emerald-600 text-white hover:bg-emerald-700"
-              >
-                <FileText className="w-4 h-4 mr-2" />
-                {report ? 'Open PDF Viewer' : 'Open Report Form'}
-              </Button>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {!profile && (
-            <div className="rounded-2xl border border-dashed border-emerald-200 bg-emerald-50 p-5 text-sm text-emerald-900">
-              Your report form now opens in the popup. Use the green button above to enter your chess account, choose game settings, and fetch your latest games.
-            </div>
-          )}
-
-          {profile && (
-            <div className="flex flex-col gap-2 text-sm text-gray-700 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <span className="font-medium">{profile.username}</span> on {profile.platform}
-                <span className="text-gray-500"> | latest {profile.gameLimit} games tracked</span>
-              </div>
-              <div className="text-gray-500">
-                {profile.lastCheckedAt ? `Checked ${new Date(profile.lastCheckedAt).toLocaleString()}` : 'Not checked yet'}
-              </div>
-            </div>
-          )}
-
-          {progress && (
-            <div className="mt-4">
-              <div className="mb-1 flex items-center justify-between text-sm">
-                <span>{progress.message}</span>
-                <span>{progress.progress}%</span>
-              </div>
-              <div className="h-2 rounded-full bg-gray-200">
-                <div className="h-2 rounded-full bg-primary-600" style={{ width: `${progress.progress}%` }} />
-              </div>
-            </div>
-          )}
-
-          {message && <p className="mt-3 text-sm text-green-700">{message}</p>}
-          {error && (
-            <p className="mt-3 flex items-center text-sm text-red-700">
-              <AlertCircle className="mr-2 h-4 w-4" />
-              {error}
-            </p>
-          )}
-        </CardContent>
-      </Card>
-      )}
-
-      {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+      <section className="aurora-panel border-t border-sky-200/60 pt-10 dark:border-slate-700/80">
+        <div className="grid gap-8 sm:grid-cols-2 xl:grid-cols-4 xl:gap-0">
         {stats.map((stat, index) => (
-          <Card key={index}>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-gray-600">
-                {stat.title}
-              </CardTitle>
-              <div className={stat.color}>
-                {stat.icon}
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-gray-900">{stat.value}</div>
-              <p className="text-xs text-green-600 mt-1">{stat.change}</p>
-            </CardContent>
-          </Card>
+          <div key={index} className="xl:border-r xl:border-sky-200/60 xl:px-6 xl:last:border-r-0 xl:first:pl-0 dark:xl:border-slate-700/80">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-xs uppercase tracking-[0.16em] text-sky-700 dark:text-sky-300">{stat.title}</p>
+              <div className={stat.color}>{stat.icon}</div>
+            </div>
+            <p className="mt-3 font-display text-3xl font-semibold text-slate-900 sm:text-4xl dark:text-white">{stat.value}</p>
+            <p className="mt-2 text-xs leading-5 text-slate-600 dark:text-slate-300">{stat.change}</p>
+          </div>
         ))}
-      </div>
+        </div>
+      </section>
 
-      <Card className="mb-8">
-        <CardHeader>
-          <CardTitle>Game Record</CardTitle>
-          <CardDescription>
-            Wins, draws, and losses pulled directly from your chess game archives.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-4">
-              <p className="text-sm text-emerald-700">Wins</p>
-              <p className="mt-1 text-2xl font-bold text-emerald-900">{gameStats.wins}</p>
-            </div>
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <p className="text-sm text-slate-600">Draws</p>
-              <p className="mt-1 text-2xl font-bold text-slate-900">{gameStats.draws}</p>
-            </div>
-            <div className="rounded-2xl border border-rose-100 bg-rose-50 p-4">
-              <p className="text-sm text-rose-700">Losses</p>
-              <p className="mt-1 text-2xl font-bold text-rose-900">{gameStats.losses}</p>
-            </div>
+      <section className="aurora-subtle border-t border-sky-200/60 pt-10 dark:border-slate-700/80">
+        <div className="mb-8">
+          <h2 className="font-display text-2xl font-semibold text-slate-900 dark:text-white">Game Record</h2>
+          <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-300">Wins, draws, and losses pulled directly from your chess game archives.</p>
+        </div>
+        <div className="grid grid-cols-1 gap-8 sm:grid-cols-3 sm:gap-10">
+          <div>
+            <p className="text-sm text-emerald-700 dark:text-emerald-300">Wins</p>
+            <p className="mt-2 font-display text-3xl font-semibold text-emerald-900 sm:text-4xl dark:text-emerald-200">{gameStats.wins}</p>
           </div>
-          <div className="mt-4 text-sm text-gray-600">
-            Win rate: <span className="font-semibold text-gray-900">{gameStats.winRate}%</span>
+          <div>
+            <p className="text-sm text-slate-600 dark:text-slate-300">Draws</p>
+            <p className="mt-2 font-display text-3xl font-semibold text-slate-900 sm:text-4xl dark:text-white">{gameStats.draws}</p>
           </div>
-        </CardContent>
-      </Card>
+          <div>
+            <p className="text-sm text-rose-700 dark:text-rose-300">Losses</p>
+            <p className="mt-2 font-display text-3xl font-semibold text-rose-900 sm:text-4xl dark:text-rose-200">{gameStats.losses}</p>
+          </div>
+        </div>
+        <div className="mt-8 text-sm text-slate-700 dark:text-slate-300">
+          Win rate: <span className="font-semibold text-slate-900 dark:text-white">{gameStats.winRate}%</span>
+        </div>
+      </section>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>All Previous Games</CardTitle>
-          <CardDescription>
-            Tiles below are pulled from the chess API and sorted newest first.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
+      <section className="border-t border-sky-200/60 pt-10 dark:border-slate-700/80">
+        <div className="mb-8">
+          <h2 className="font-display text-2xl font-semibold text-slate-900 dark:text-white">All Previous Games</h2>
+          <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-300">Recent games from your chess archive, newest first.</p>
+        </div>
           {userGames.length === 0 ? (
-            <div className="rounded-lg border border-dashed border-gray-300 p-4 text-sm text-gray-500">
-              Save your chess username to fetch your previous games.
-            </div>
+            <EmptyState
+              icon={SearchX}
+              title="No games synced yet"
+              description="Connect your chess username from the report form to pull your latest archive and unlock personalized insights."
+              className="border-dashed"
+              action={
+                <Button onClick={() => setIsReportPopupOpen(true)} className="cursor-pointer">
+                  Open Report Form
+                </Button>
+              }
+            />
           ) : (
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 xl:grid-cols-3">
               {userGames.map((game: any) => {
                 const result = getGameResult(game);
                 const opponent = getOpponentName(game);
                 const userRating = getUserRating(game);
                 const opponentRating = getOpponentRating(game);
-                const resultColor = result === 'Win'
-                  ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+                const openingName = game.opening?.name && game.opening.name !== 'Unknown'
+                  ? game.opening.name
+                  : null;
+                const timeControl = game.timeControl && game.timeControl !== 'Unknown'
+                  ? game.timeControl
+                  : null;
+                const accentClass = result === 'Win'
+                  ? 'bg-emerald-500'
                   : result === 'Loss'
-                    ? 'border-rose-200 bg-rose-50 text-rose-800'
-                    : 'border-slate-200 bg-slate-50 text-slate-700';
+                    ? 'bg-rose-500'
+                    : 'bg-slate-400 dark:bg-slate-500';
+                const resultBadgeClass = result === 'Win'
+                  ? 'bg-emerald-50 text-emerald-800 ring-emerald-200/80 dark:bg-emerald-500/15 dark:text-emerald-300 dark:ring-emerald-500/30'
+                  : result === 'Loss'
+                    ? 'bg-rose-50 text-rose-800 ring-rose-200/80 dark:bg-rose-500/15 dark:text-rose-300 dark:ring-rose-500/30'
+                    : 'bg-slate-100 text-slate-700 ring-slate-200/80 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-600';
 
                 return (
-                  <div key={game.id} className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm transition hover:shadow-md">
+                  <button
+                    key={game.id}
+                    type="button"
+                    onClick={() => {
+                      persistSelectedGame(game as ChessGame);
+                      navigate(`/game/${encodeURIComponent(game.id)}`, { state: { game } });
+                    }}
+                    className="game-card flex h-full w-full cursor-pointer flex-col pl-6 text-left transition hover:-translate-y-0.5 hover:shadow-elevated focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500"
+                  >
+                    <span className={`game-card-accent ${accentClass}`} aria-hidden />
                     <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-gray-500">
-                          <CalendarDays className="h-3.5 w-3.5" />
-                          {game.date}
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
+                          <span className="inline-flex items-center gap-1.5">
+                            <CalendarDays className="h-3.5 w-3.5 shrink-0" />
+                            {game.date}
+                          </span>
+                          {timeControl && (
+                            <span className="rounded-md bg-slate-100 px-2 py-0.5 font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                              {timeControl}
+                            </span>
+                          )}
                         </div>
-                        <h3 className="mt-2 text-base font-semibold text-gray-900">vs {opponent}</h3>
+                        <h3 className="mt-2 truncate font-display text-lg font-semibold text-slate-900 dark:text-white">
+                          vs {opponent}
+                        </h3>
                       </div>
-                      <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${resultColor}`}>
+                      <span className={`inline-flex shrink-0 items-center rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset ${resultBadgeClass}`}>
                         {result}
                       </span>
                     </div>
 
-                    <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
-                      <div className="rounded-xl bg-gray-50 p-3">
-                        <p className="text-gray-500">Your rating</p>
-                        <p className="mt-1 text-lg font-semibold text-gray-900">{userRating ? userRating.toLocaleString() : '-'}</p>
-                      </div>
-                      <div className="rounded-xl bg-gray-50 p-3">
-                        <p className="text-gray-500">Opponent rating</p>
-                        <p className="mt-1 text-lg font-semibold text-gray-900">{opponentRating ? opponentRating.toLocaleString() : '-'}</p>
-                      </div>
-                    </div>
-
-                    <div className="mt-4 flex items-center justify-between gap-3 text-sm text-gray-600">
-                      <span>{game.opening?.name || 'Unknown opening'}</span>
-                      <span>{game.timeControl || 'Unknown time control'}</span>
-                    </div>
-
-                    {game.url && (
-                      <a
-                        href={game.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="mt-4 inline-flex items-center text-sm font-medium text-emerald-700 hover:text-emerald-800"
-                      >
-                        Open game <ExternalLink className="ml-1 h-4 w-4" />
-                      </a>
+                    {openingName && (
+                      <p className="mt-1 truncate text-sm text-slate-600 dark:text-slate-300">
+                        {openingName}
+                      </p>
                     )}
-                  </div>
+
+                    <div className="mt-auto grid grid-cols-2 gap-4 border-t border-slate-100 pt-4 dark:border-slate-800">
+                      <div>
+                        <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">You</p>
+                        <p className="mt-1 font-display text-base font-semibold tabular-nums text-slate-900 dark:text-white">
+                          {userRating ? userRating.toLocaleString() : '—'}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">Opp</p>
+                        <p className="mt-1 font-display text-base font-semibold tabular-nums text-slate-900 dark:text-white">
+                          {opponentRating ? opponentRating.toLocaleString() : '—'}
+                        </p>
+                      </div>
+                    </div>
+                  </button>
                 );
               })}
             </div>
           )}
-        </CardContent>
-      </Card>
+      </section>
 
       <ReportPopup
         isOpen={isReportPopupOpen}
