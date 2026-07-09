@@ -1,20 +1,20 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowRight, BarChart3, Clock3, Plus, Sparkles } from 'lucide-react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/Card';
-import ReportDisplay from '../components/ReportDisplay';
-import { reportService } from '../services/reportService';
+import { ArrowRight, Plus, Sparkles } from 'lucide-react';
+import { Button } from '../components/ui/Button';
 import { ChessReport, GameReportRequest, ReportGenerationProgress } from '../types/report';
 import { useAuth } from '../contexts/AuthContext';
+import { reportService } from '../services/reportService';
+import ReportPopup from '../components/ReportPopup';
 
 const GameAnalysisPage: React.FC = () => {
   const { currentUser } = useAuth();
-  const [isPopupOpen, setIsPopupOpen] = useState(false);
+  const [savedReports, setSavedReports] = useState<ChessReport[]>([]);
+  const [activeReport, setActiveReport] = useState<ChessReport | null>(null);
+  const [isReportPopupOpen, setIsReportPopupOpen] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisProgress, setAnalysisProgress] = useState<ReportGenerationProgress | null>(null);
+  const [analysisMessage, setAnalysisMessage] = useState<string | null>(null);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
-  const [analysisReport, setAnalysisReport] = useState<ChessReport | null>(null);
-  const [savedReports, setSavedReports] = useState<ChessReport[]>([]);
-  const [selectedReport, setSelectedReport] = useState<ChessReport | null>(null);
 
   const storageKey = useMemo(() => {
     return `opponent-analysis-reports-${currentUser?.id || 'guest'}`;
@@ -40,7 +40,6 @@ const GameAnalysisPage: React.FC = () => {
       );
 
       setSavedReports(revivedReports);
-      setSelectedReport(revivedReports[0] || null);
     } catch (parseError) {
       console.error('Failed to load saved opponent reports:', parseError);
       setSavedReports([]);
@@ -51,8 +50,9 @@ const GameAnalysisPage: React.FC = () => {
     localStorage.setItem(storageKey, JSON.stringify(savedReports));
   }, [savedReports, storageKey]);
 
-  const handleStartAnalysis = async (request: GameReportRequest) => {
+  const handleGenerateOpponentReport = async (request: GameReportRequest) => {
     setIsAnalyzing(true);
+    setAnalysisMessage(null);
     setAnalysisError(null);
     setAnalysisProgress(null);
     reportService.setProgressCallback(setAnalysisProgress);
@@ -60,8 +60,6 @@ const GameAnalysisPage: React.FC = () => {
     try {
       const report = await reportService.generateReport(request);
       const normalizedReport = reviveReport(report);
-      setAnalysisReport(normalizedReport);
-      setSelectedReport(normalizedReport);
       setSavedReports((previousReports) => {
         const reportKey = `${normalizedReport.platform}:${normalizedReport.username.trim().toLowerCase()}`;
         const remainingReports = previousReports.filter(
@@ -72,7 +70,8 @@ const GameAnalysisPage: React.FC = () => {
           (left, right) => new Date(right.generatedAt).getTime() - new Date(left.generatedAt).getTime()
         );
       });
-      setIsPopupOpen(false);
+      setActiveReport(normalizedReport);
+      setAnalysisMessage(`Analyzed ${normalizedReport.gameCount} games for ${normalizedReport.username}.`);
     } catch (reportError) {
       setAnalysisError(reportError instanceof Error ? reportError.message : 'Could not analyze opponent.');
     } finally {
@@ -80,128 +79,103 @@ const GameAnalysisPage: React.FC = () => {
     }
   };
 
-  return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Analyze Opponents</h1>
-        <p className="mt-2 text-gray-600">
-          Open the analyzer, enter a username, and revisit every opponent report you have saved.
-        </p>
-      </div>
+  const openNewReportPopup = () => {
+    setActiveReport(null);
+    setAnalysisMessage(null);
+    setAnalysisError(null);
+    setAnalysisProgress(null);
+    setIsReportPopupOpen(true);
+  };
 
-      <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-4">
-        <button
-          type="button"
-          onClick={() => {
-            setAnalysisError(null);
-            setAnalysisProgress(null);
-            setIsPopupOpen(true);
-          }}
-          className="group flex min-h-[200px] flex-col justify-between rounded-3xl border border-dashed border-slate-300 bg-white p-6 text-left shadow-sm transition hover:-translate-y-1 hover:border-sky-400 hover:shadow-xl"
-        >
+  const openExistingReport = (report: ChessReport) => {
+    setActiveReport(report);
+    setAnalysisMessage(null);
+    setAnalysisError(null);
+    setAnalysisProgress(null);
+    setIsReportPopupOpen(true);
+  };
+
+  return (
+    <div className="section-shell space-y-8 py-8">
+      <section className="aurora-panel">
+        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-700 dark:text-sky-300">Opponent intelligence</p>
+        <div className="mt-2 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
-            <div className="mb-4 inline-flex rounded-2xl bg-sky-50 p-3 text-sky-700 transition group-hover:bg-sky-100">
-              <Plus className="h-8 w-8" />
-            </div>
-            <h2 className="text-2xl font-extrabold text-slate-900">Analyze Opponents</h2>
-            <p className="mt-2 max-w-sm text-sm text-slate-600">
-              Click to open the form, choose a platform, enter a username, and generate an opponent report.
+            <h1 className="font-display text-3xl font-semibold text-slate-900 sm:text-4xl dark:text-white">Analyze Opponents</h1>
+            <p className="mt-3 max-w-2xl text-sm text-slate-700 sm:text-base dark:text-slate-300">
+              Keep a reusable library of opponent reports, compare patterns quickly, and open full tactical summaries in one click.
             </p>
           </div>
-          <div className="flex items-center gap-2 text-sm font-semibold text-sky-700">
-            Open analysis form
-            <ArrowRight className="h-4 w-4 transition group-hover:translate-x-1" />
-          </div>
-        </button>
+          <Button type="button" onClick={openNewReportPopup} className="cursor-pointer bg-sky-600 text-white hover:bg-sky-700">
+            <Plus className="mr-2 h-4 w-4" />
+            Generate new report
+          </Button>
+        </div>
+      </section>
 
+      <section className="aurora-subtle pt-6">
+        <div className="mb-4 pb-3">
+          <h2 className="font-display text-xl font-semibold text-slate-900 dark:text-white">Saved reports</h2>
+        </div>
+        <div className="divide-y divide-sky-200/70 dark:divide-slate-700/80">
         {savedReports.map((report) => {
-          const isSelected = selectedReport?.id === report.id;
+          const isSelected = activeReport?.id === report.id;
 
           return (
             <button
               key={report.id}
               type="button"
-              onClick={() => setSelectedReport(report)}
-              className={`group flex min-h-[200px] flex-col justify-between rounded-3xl border bg-white p-6 text-left shadow-sm transition hover:-translate-y-1 hover:shadow-xl ${
-                isSelected
-                  ? 'border-emerald-400 ring-2 ring-emerald-200'
-                  : 'border-slate-200 hover:border-emerald-300'
+              onClick={() => openExistingReport(report)}
+              className={`group grid w-full cursor-pointer gap-3 px-1 py-4 text-left transition sm:grid-cols-[1.2fr_1fr_1fr_auto] sm:items-center ${
+                isSelected ? 'bg-sky-50/70 dark:bg-slate-800/60' : 'hover:bg-white/50 dark:hover:bg-slate-800/40'
               }`}
             >
-              <div>
-                <div className="mb-4 inline-flex rounded-2xl bg-emerald-50 p-3 text-emerald-700 transition group-hover:bg-emerald-100">
-                  <Sparkles className="h-8 w-8" />
+              <div className="flex items-center gap-3">
+                <div className="inline-flex rounded-xl bg-emerald-100/80 p-2 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300">
+                  <Sparkles className="h-5 w-5" />
                 </div>
-                <h2 className="text-2xl font-extrabold text-slate-900">{report.username}</h2>
-                <p className="mt-2 text-sm text-slate-600">
-                  {report.platform} · {report.gameCount} games analyzed
-                </p>
-                <div className="mt-4 grid gap-3 text-sm text-slate-600">
-                  <div className="rounded-2xl bg-slate-50 px-3 py-2">
-                    Win rate: <span className="font-semibold text-slate-900">{report.executiveSummary.winRate}%</span>
-                  </div>
-                  <div className="rounded-2xl bg-slate-50 px-3 py-2">
-                    Accuracy: <span className="font-semibold text-slate-900">{report.executiveSummary.averageAccuracy}%</span>
-                  </div>
+                <div>
+                  <p className="font-semibold text-slate-900 dark:text-white">{report.username}</p>
+                  <p className="text-xs uppercase tracking-[0.14em] text-slate-500 dark:text-slate-400">
+                    {report.platform} · {report.gameCount} games analyzed
+                  </p>
                 </div>
               </div>
-              <div className="flex items-center gap-2 text-sm font-semibold text-emerald-700">
-                Open full report
-                <ArrowRight className="h-4 w-4 transition group-hover:translate-x-1" />
+              <div className="text-sm text-slate-600 dark:text-slate-300">
+                Win rate <span className="ml-1 font-semibold text-slate-900 dark:text-white">{report.executiveSummary.winRate}%</span>
+              </div>
+              <div className="text-sm text-slate-600 dark:text-slate-300">
+                Accuracy <span className="ml-1 font-semibold text-slate-900 dark:text-white">{report.executiveSummary.averageAccuracy}%</span>
+              </div>
+              <div className="inline-flex items-center gap-2 text-sm font-semibold text-sky-700 dark:text-sky-300">
+                Open
+                <ArrowRight className="h-4 w-4" />
               </div>
             </button>
           );
         })}
-      </div>
-
-      {selectedReport ? (
-        <div className="mt-8 rounded-3xl border border-slate-200 bg-white shadow-xl overflow-hidden">
-          <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4 sm:px-6">
-            <div>
-              <div className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Saved opponent report</div>
-              <div className="mt-1 text-lg font-bold text-slate-900">
-                {selectedReport.username} on {selectedReport.platform}
-              </div>
-            </div>
-            <div className="flex items-center gap-2 text-sm text-slate-500">
-              <Clock3 className="h-4 w-4" />
-              {selectedReport.generatedAt.toLocaleDateString()}
-            </div>
-          </div>
-          <ReportDisplay
-            report={selectedReport}
-            onBack={() => setSelectedReport(null)}
-          />
+        {savedReports.length === 0 && (
+          <p className="py-6 text-sm text-slate-600 dark:text-slate-300">No reports saved yet. Generate your first opponent report here.</p>
+        )}
         </div>
-      ) : analysisReport ? (
-        <Card className="mt-8 border-emerald-200 shadow-sm">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <BarChart3 className="h-5 w-5" />
-              Latest opponent analysis
-            </CardTitle>
-            <CardDescription>
-              {analysisReport.username} on {analysisReport.platform} · {analysisReport.gameCount} games analyzed
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-4 md:grid-cols-3">
-            <div className="rounded-2xl bg-slate-50 p-4">
-              <div className="text-sm text-slate-500">Win rate</div>
-              <div className="text-2xl font-bold text-slate-900">{analysisReport.executiveSummary.winRate}%</div>
-            </div>
-            <div className="rounded-2xl bg-slate-50 p-4">
-              <div className="text-sm text-slate-500">Average accuracy</div>
-              <div className="text-2xl font-bold text-slate-900">{analysisReport.executiveSummary.averageAccuracy}%</div>
-            </div>
-            <div className="rounded-2xl bg-slate-50 p-4">
-              <div className="text-sm text-slate-500">Key insight</div>
-              <div className="text-sm font-medium text-slate-900">
-                {analysisReport.executiveSummary.keyInsights[0] || 'Analysis completed successfully.'}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      ) : null}
+      </section>
+
+      <p className="text-sm text-slate-600 dark:text-slate-300">
+        Use "Generate new report" to open the same report form and viewer popup as the dashboard, including opponent ID, game count, and game type filters.
+      </p>
+
+      <ReportPopup
+        isOpen={isReportPopupOpen}
+        onClose={() => setIsReportPopupOpen(false)}
+        report={activeReport}
+        initialPlatform="lichess"
+        initialUsername=""
+        onSaveAndAnalyze={handleGenerateOpponentReport}
+        isRefreshing={isAnalyzing}
+        progress={analysisProgress}
+        message={analysisMessage}
+        error={analysisError}
+      />
     </div>
   );
 };
