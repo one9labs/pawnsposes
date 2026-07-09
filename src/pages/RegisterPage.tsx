@@ -83,14 +83,15 @@ const RegisterPage: React.FC = () => {
   };
 
   const createInitialAnalysis = async (userId: string) => {
-    setLoadingMessage('Syncing your latest 20 games...');
+    setLoadingMessage('Syncing all of your games...');
     profileAnalysisService.setProgressCallback(setProgress);
 
     await profileAnalysisService.setupProfile({
       userId,
       platform: formData.chessPlatform,
       username: formData.chessUsername.trim(),
-      gameCount: 20
+      gameCount: 20,
+      allGames: true
     });
   };
 
@@ -188,7 +189,7 @@ const RegisterPage: React.FC = () => {
             </div>
             <CardTitle className="text-center">Syncing your games</CardTitle>
             <CardDescription className="text-center">
-              We are fetching your latest 20 games and saving your chess profile. This only happens once during setup.
+              We are fetching your full game history from the chess API and saving your profile. This can take a few minutes for active accounts.
             </CardDescription>
           </CardHeader>
           <CardContent>
