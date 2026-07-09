@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ArrowRight, BarChart3, Clock3, Plus, Sparkles } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/Card';
-import OpponentAnalysisPopup from '../components/OpponentAnalysisPopup';
 import ReportDisplay from '../components/ReportDisplay';
 import { reportService } from '../services/reportService';
 import { ChessReport, GameReportRequest, ReportGenerationProgress } from '../types/report';
@@ -203,15 +202,6 @@ const GameAnalysisPage: React.FC = () => {
           </CardContent>
         </Card>
       ) : null}
-
-      <OpponentAnalysisPopup
-        isOpen={isPopupOpen}
-        onClose={() => setIsPopupOpen(false)}
-        onAnalyze={handleStartAnalysis}
-        isAnalyzing={isAnalyzing}
-        progress={analysisProgress}
-        error={analysisError}
-      />
     </div>
   );
 };

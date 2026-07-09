@@ -112,10 +112,10 @@ class ProfileAnalysisService {
     };
 
     await this.saveProfile(profile);
-    return this.refreshProfile(request.userId, true);
+    return this.refreshProfile(request.userId);
   }
 
-  async refreshProfile(userId: string, forceAnalyze = false): Promise<ProfileRefreshResult> {
+  async refreshProfile(userId: string): Promise<ProfileRefreshResult> {
     const profile = await this.loadProfile(userId);
     if (!profile) {
       throw new Error('Please add your chess username first.');
@@ -137,41 +137,69 @@ class ProfileAnalysisService {
       lastCheckedAt: new Date().toISOString()
     };
 
-    if (!forceAnalyze && profile.report && newGames.length === 0) {
-      await this.saveProfile(nextProfile);
-      return {
-        profile: nextProfile,
-        newGamesCount: 0,
-        reusedCache: true
-      };
-    }
+    await this.saveProfile(nextProfile);
 
-    const gamesToAnalyze = profile.report && newGames.length > 0 && !forceAnalyze
-      ? newGames
-      : latestGames.games;
+    return {
+      profile: nextProfile,
+      newGamesCount: newGames.length,
+      reusedCache: newGames.length === 0
+    };
+  }
+
+  async generateReportForProfile(request: GameReportRequest & { userId: string }): Promise<ProfileRefreshResult> {
+    const existingProfile = await this.loadProfile(request.userId);
+    const profile: PlayerAnalysisProfile = existingProfile || {
+      userId: request.userId,
+      platform: request.platform,
+      username: request.username,
+      gameLimit: request.gameCount || DEFAULT_GAME_LIMIT,
+      rated: request.rated,
+      games: [],
+      analyzedGameIds: [],
+      report: null,
+      lastCheckedAt: null,
+      lastAnalyzedAt: null
+    };
+
+    const latestGames = await gameImportService.importGames({
+      platform: request.platform,
+      username: request.username,
+      count: request.gameCount,
+      rated: request.rated
+    });
+
+    if (!latestGames.games || latestGames.games.length === 0) {
+      throw new Error('No games found for the specified user');
+    }
 
     const report = await reportService.generateReportFromGamesWithUnifiedPrompts(
       {
-        platform: profile.platform,
-        username: profile.username,
-        gameCount: gamesToAnalyze.length,
-        rated: profile.rated
+        platform: request.platform,
+        username: request.username,
+        gameCount: latestGames.games.length,
+        rated: request.rated
       },
-      gamesToAnalyze
+      latestGames.games
     );
 
     const analyzedIds = new Set([
       ...profile.analyzedGameIds,
-      ...gamesToAnalyze.map(game => game.id)
+      ...latestGames.games.map(game => game.id)
     ]);
 
     const analyzedProfile: PlayerAnalysisProfile = {
-      ...nextProfile,
+      ...profile,
+      platform: request.platform,
+      username: request.username,
+      gameLimit: request.gameCount,
+      rated: request.rated,
+      games: this.mergeLatestGames(profile.games, latestGames.games, request.gameCount),
       report: {
         ...report,
-        userId
+        userId: request.userId
       },
       analyzedGameIds: Array.from(analyzedIds),
+      lastCheckedAt: new Date().toISOString(),
       lastAnalyzedAt: new Date().toISOString()
     };
 
@@ -179,7 +207,7 @@ class ProfileAnalysisService {
 
     return {
       profile: analyzedProfile,
-      newGamesCount: gamesToAnalyze.length,
+      newGamesCount: latestGames.games.length,
       reusedCache: false
     };
   }

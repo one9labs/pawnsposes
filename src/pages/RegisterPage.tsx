@@ -83,7 +83,7 @@ const RegisterPage: React.FC = () => {
   };
 
   const createInitialAnalysis = async (userId: string) => {
-    setLoadingMessage('Analyzing your latest 20 games...');
+    setLoadingMessage('Syncing your latest 20 games...');
     profileAnalysisService.setProgressCallback(setProgress);
 
     await profileAnalysisService.setupProfile({
@@ -178,7 +178,7 @@ const RegisterPage: React.FC = () => {
     { text: 'Contains letters and numbers', met: /(?=.*[a-zA-Z])(?=.*\d)/.test(formData.password) },
   ];
 
-  if (loading && (loadingMessage.includes('Analyzing') || progress)) {
+  if (loading && (loadingMessage.includes('Syncing') || loadingMessage.includes('Analyzing') || progress)) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
         <Card className="w-full max-w-lg">
@@ -186,9 +186,9 @@ const RegisterPage: React.FC = () => {
             <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-primary-100">
               <Loader2 className="h-6 w-6 animate-spin text-primary-600" />
             </div>
-            <CardTitle className="text-center">Analyzing your games</CardTitle>
+            <CardTitle className="text-center">Syncing your games</CardTitle>
             <CardDescription className="text-center">
-              We are fetching your latest 20 games and building your first chess report. This only happens once during setup.
+              We are fetching your latest 20 games and saving your chess profile. This only happens once during setup.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -205,7 +205,7 @@ const RegisterPage: React.FC = () => {
               </div>
             </div>
             <p className="mt-4 text-center text-sm text-gray-500">
-              Keep this tab open. Your dashboard will appear automatically when the analysis is ready.
+              Keep this tab open. Your dashboard will appear automatically when the sync is ready.
             </p>
           </CardContent>
         </Card>
