@@ -2,6 +2,8 @@ export interface GameReportRequest {
   platform: 'lichess' | 'chess.com';
   username: string;
   gameCount: number;
+  /** When true, fetch the player's full game history instead of `gameCount`. */
+  allGames?: boolean;
   rated?: boolean;
 }
 

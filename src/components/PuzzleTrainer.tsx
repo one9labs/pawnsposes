@@ -233,7 +233,7 @@ const PuzzleTrainer: React.FC<PuzzleTrainerProps> = ({ analysis }) => {
 
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+      <div className="divide-y divide-sky-200/70 dark:divide-slate-700/80">
         {trainingCategories.map(category => {
           const config = puzzleService.buildTrainingConfig(category.id, analysis);
           const isActive = selectedCategory === category.id;
@@ -243,37 +243,37 @@ const PuzzleTrainer: React.FC<PuzzleTrainerProps> = ({ analysis }) => {
               key={category.id}
               type="button"
               onClick={() => setSelectedCategory(category.id)}
-              className={`text-left rounded-lg border p-4 transition-colors ${
+              className={`grid w-full cursor-pointer gap-2 py-3 text-left transition sm:grid-cols-[1fr_auto] sm:items-center ${
                 isActive
-                  ? 'border-primary-500 bg-primary-50'
-                  : 'border-gray-200 bg-white hover:border-primary-300 hover:bg-gray-50'
+                  ? 'bg-sky-50/70 dark:bg-slate-800/60'
+                  : 'hover:bg-white/40 dark:hover:bg-slate-800/40'
               }`}
             >
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-md bg-gray-900 text-white">
+              <div>
+                <div className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-sky-100 text-sky-700 dark:bg-sky-500/15 dark:text-sky-300">
                   {category.icon}
                 </div>
-                <Badge variant="outline" className="capitalize">
-                  {config.difficulty}
-                </Badge>
+                <h3 className="mt-2 font-display text-base font-semibold text-slate-900 dark:text-white">{category.title}</h3>
+                <p className="mt-1 text-sm leading-5 text-slate-600 dark:text-slate-300">{category.description}</p>
+                <div className="mt-2 text-xs font-medium uppercase tracking-wide text-sky-700 dark:text-sky-300">
+                  Lichess theme: {config.angle}
+                </div>
               </div>
-              <h3 className="mt-4 text-base font-semibold text-gray-900">{category.title}</h3>
-              <p className="mt-2 text-sm leading-5 text-gray-600">{category.description}</p>
-              <div className="mt-3 text-xs font-medium uppercase tracking-wide text-gray-500">
-                Lichess theme: {config.angle}
-              </div>
+              <Badge variant="outline" className="h-fit w-fit capitalize border-sky-200 text-sky-700 dark:border-slate-600 dark:text-sky-300">
+                {config.difficulty}
+              </Badge>
             </button>
           );
         })}
       </div>
 
       {selectedCategory && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
           <div className="lg:col-span-2">
-            <Card>
+            <Card className="aurora-subtle">
               <CardHeader>
                 <div className="flex items-center justify-between gap-4">
-                  <CardTitle className="flex items-center gap-2 text-xl">
+                  <CardTitle className="flex items-center gap-2 font-display text-xl">
                     <Target className="h-5 w-5" />
                     {activeCategory?.title}
                   </CardTitle>
@@ -296,8 +296,8 @@ const PuzzleTrainer: React.FC<PuzzleTrainerProps> = ({ analysis }) => {
                       allowDragging: !!currentPuzzle && !isSolved && !isLoading,
                       onPieceDrop: handlePieceDrop,
                       boardStyle: {
-                        borderRadius: '4px',
-                        boxShadow: '0 2px 10px rgba(0, 0, 0, 0.35)'
+                        borderRadius: '14px',
+                        boxShadow: '0 18px 48px rgba(15, 23, 42, 0.24)'
                       }
                     }}
                   />
@@ -307,47 +307,47 @@ const PuzzleTrainer: React.FC<PuzzleTrainerProps> = ({ analysis }) => {
           </div>
 
           <div className="space-y-4">
-            <Card>
+            <Card className="aurora-subtle">
               <CardHeader>
-                <CardTitle className="text-lg">Puzzle Session</CardTitle>
+                <CardTitle className="font-display text-lg">Puzzle Session</CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="grid grid-cols-2 gap-3">
-                  <div className="rounded-md border border-gray-200 p-3">
-                    <div className="text-xs text-gray-500">Streak</div>
-                    <div className="text-2xl font-bold">{streak}</div>
+                  <div className="rounded-xl bg-sky-50 p-3 dark:bg-sky-500/10">
+                    <div className="text-xs text-sky-700 dark:text-sky-300">Streak</div>
+                    <div className="font-display text-2xl font-semibold text-slate-900 dark:text-white">{streak}</div>
                   </div>
-                  <div className="rounded-md border border-gray-200 p-3">
-                    <div className="text-xs text-gray-500">Solved</div>
-                    <div className="text-2xl font-bold">{solved}</div>
+                  <div className="rounded-xl bg-sky-50 p-3 dark:bg-sky-500/10">
+                    <div className="text-xs text-sky-700 dark:text-sky-300">Solved</div>
+                    <div className="font-display text-2xl font-semibold text-slate-900 dark:text-white">{solved}</div>
                   </div>
                 </div>
 
                 {currentPuzzle && (
                   <div className="grid grid-cols-2 gap-3 text-sm">
                     <div>
-                      <div className="text-gray-500">Side to Move</div>
-                      <div className="font-semibold">{sideToMove}</div>
+                      <div className="text-sky-700 dark:text-sky-300">Side to Move</div>
+                      <div className="font-semibold text-slate-900 dark:text-white">{sideToMove}</div>
                     </div>
                     <div>
-                      <div className="text-gray-500">Puzzle Rating</div>
-                      <div className="font-semibold">{currentPuzzle.puzzle.rating}</div>
+                      <div className="text-sky-700 dark:text-sky-300">Puzzle Rating</div>
+                      <div className="font-semibold text-slate-900 dark:text-white">{currentPuzzle.puzzle.rating}</div>
                     </div>
                   </div>
                 )}
 
-                <div className="rounded-md bg-gray-50 p-3 text-sm text-gray-700">
+                <div className="rounded-xl bg-slate-50 p-3 text-sm text-slate-700 dark:bg-slate-800 dark:text-slate-200">
                   {status}
                 </div>
 
                 {error && (
-                  <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                  <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
                     {error}
                   </div>
                 )}
 
                 {showHint && expectedMove && (
-                  <div className="rounded-md border border-yellow-200 bg-yellow-50 p-3 text-sm text-yellow-800">
+                  <div className="rounded-md border border-yellow-200 bg-yellow-50 p-3 text-sm text-yellow-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
                     Try a move from <span className="font-mono">{expectedMove.slice(0, 2)}</span>.
                   </div>
                 )}
@@ -355,7 +355,7 @@ const PuzzleTrainer: React.FC<PuzzleTrainerProps> = ({ analysis }) => {
                 {currentPuzzle?.puzzle.themes && (
                   <div className="flex flex-wrap gap-2">
                     {currentPuzzle.puzzle.themes.slice(0, 5).map(theme => (
-                      <Badge key={theme} variant="secondary">
+                      <Badge key={theme} variant="secondary" className="bg-ink-100 text-ink-700 dark:bg-slate-800 dark:text-slate-200">
                         {theme}
                       </Badge>
                     ))}
@@ -383,25 +383,25 @@ const PuzzleTrainer: React.FC<PuzzleTrainerProps> = ({ analysis }) => {
               </CardContent>
             </Card>
 
-            <Card>
+            <Card className="aurora-subtle">
               <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-lg">
+                <CardTitle className="flex items-center gap-2 font-display text-lg">
                   <Trophy className="h-5 w-5" />
                   Targeting
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-2 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-gray-500">Category</span>
-                  <span className="font-medium">{selectedCategory ? puzzleService.getCategoryLabel(selectedCategory) : '-'}</span>
+                  <span className="text-sky-700 dark:text-sky-300">Category</span>
+                  <span className="font-medium text-slate-900 dark:text-white">{selectedCategory ? puzzleService.getCategoryLabel(selectedCategory) : '-'}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-500">Lichess theme</span>
-                  <span className="font-medium">{trainingConfig?.angle}</span>
+                  <span className="text-sky-700 dark:text-sky-300">Lichess theme</span>
+                  <span className="font-medium text-slate-900 dark:text-white">{trainingConfig?.angle}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-500">Level</span>
-                  <span className="font-medium capitalize">{trainingConfig?.difficulty}</span>
+                  <span className="text-sky-700 dark:text-sky-300">Level</span>
+                  <span className="font-medium capitalize text-slate-900 dark:text-white">{trainingConfig?.difficulty}</span>
                 </div>
               </CardContent>
             </Card>
