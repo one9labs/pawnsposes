@@ -1,24 +1,33 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { useTheme } from '../contexts/ThemeContext';
 import {
   ArrowRight,
   ChevronDown,
   Crown,
   LogOut,
   Menu,
+  Moon,
   Settings,
+  Sun,
   User,
   X
 } from 'lucide-react';
 
 const Navbar: React.FC = () => {
   const { currentUser, logout } = useAuth();
+  const { isDark, toggleTheme } = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const isLandingPage = location.pathname === '/' && !currentUser;
+
+  useEffect(() => {
+    setIsMenuOpen(false);
+    setIsProfileOpen(false);
+  }, [location.pathname]);
 
   const handleLogout = async () => {
     try {
@@ -40,74 +49,74 @@ const Navbar: React.FC = () => {
     { name: 'Students', href: '/students' },
   ];
 
-  const navLinkClass = 'rounded-full px-3 py-2 text-sm font-medium text-primary-900/70 transition hover:bg-primary-50 hover:text-primary-900';
-  const mobileLinkClass = 'block rounded-lg px-3 py-2 text-base font-medium text-primary-900/75 transition hover:bg-primary-50 hover:text-primary-900';
+  const getNavClassName = (href: string) => {
+    const isActive = location.pathname === href;
+    return [
+      'rounded-full px-3.5 py-1.5 text-sm font-medium transition',
+      isActive
+        ? 'bg-slate-900/10 text-slate-900 shadow-[inset_0_1px_0_rgba(0,0,0,0.05)] dark:bg-white/15 dark:text-white dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.12)]'
+        : 'text-slate-600 hover:bg-slate-900/5 hover:text-slate-900 dark:text-white/75 dark:hover:bg-white/10 dark:hover:text-white',
+    ].join(' ');
+  };
 
   return (
-    <nav className={`${isLandingPage ? 'fixed' : 'sticky'} left-0 right-0 top-0 z-40 px-3 pt-3 sm:px-5`}>
-      <div className={`mx-auto max-w-7xl rounded-full border px-3 shadow-lg backdrop-blur-xl transition ${
-        isLandingPage
-          ? 'border-white/70 bg-[#fbfcf8]/95 shadow-primary-900/20'
-          : 'border-primary-900/10 bg-white/95 shadow-primary-900/5'
-      }`}>
-        <div className="flex h-12 items-center justify-between gap-4 sm:h-14">
-          <div className="flex min-w-0 items-center">
-            <div className="flex flex-shrink-0 items-center">
-              <Link to="/" className="group flex items-center gap-2 rounded-full pr-2 transition">
-                <img
-                  src="/pnp_logo.jpeg"
-                  alt="Pawnsposes logo"
-                  className="h-8 w-8 rounded-full object-cover shadow-sm ring-1 ring-primary-900/10 sm:h-9 sm:w-9"
-                />
-                <span className="text-base font-bold tracking-normal text-primary-900 sm:text-lg">Pawnsposes</span>
-              </Link>
-            </div>
+    <nav className="pointer-events-none fixed inset-x-0 top-0 z-40 px-3 pt-3 sm:px-4">
+      <div className="pointer-events-auto mx-auto w-full max-w-4xl">
+        <div className="rounded-full border border-slate-200 bg-white/90 px-2.5 shadow-[0_12px_40px_rgba(0,0,0,0.08)] backdrop-blur-xl dark:border-white/10 dark:bg-slate-950/80">
+          <div className="flex h-12 items-center justify-between gap-2 sm:h-14 sm:gap-4 sm:px-1">
+            <Link to="/" className="group flex min-w-0 shrink-0 items-center gap-2 rounded-full py-1 pl-1 pr-2 transition">
+              <img
+                src="/pnp_logo.jpeg"
+                alt="Pawnsposes logo"
+                className="h-8 w-8 rounded-full object-cover ring-1 ring-slate-200 dark:ring-white/20 sm:h-9 sm:w-9"
+              />
+              <span className="truncate text-sm font-semibold tracking-tight text-slate-900 dark:text-white sm:text-base">
+                Pawnsposes
+              </span>
+            </Link>
 
             {currentUser && (
-              <div className="hidden sm:ml-5 sm:flex sm:items-center sm:gap-1">
+              <div className="hidden min-w-0 flex-1 items-center justify-center gap-1 sm:flex">
                 {navigation.map((item) => (
-                  <Link key={item.name} to={item.href} className={navLinkClass}>
+                  <Link key={item.name} to={item.href} className={getNavClassName(item.href)}>
                     {item.name}
                   </Link>
                 ))}
-
                 {currentUser.role === 'coach' && coachNavigation.map((item) => (
-                  <Link key={item.name} to={item.href} className={navLinkClass}>
+                  <Link key={item.name} to={item.href} className={getNavClassName(item.href)}>
                     {item.name}
                   </Link>
                 ))}
               </div>
             )}
-          </div>
 
-          <div className="hidden sm:flex sm:items-center">
-            {currentUser ? (
-              <div className="flex items-center gap-3">
-                {currentUser.isPremium && (
-                  <div className="flex items-center gap-1 rounded-full bg-gold-100 px-2.5 py-1 text-xs font-semibold text-gold-800 ring-1 ring-gold-300/50">
-                    <Crown className="h-3 w-3" />
-                    <span>Premium</span>
-                  </div>
-                )}
-
-                <div className="relative">
+            <div className="flex shrink-0 items-center justify-end gap-2">
+              {currentUser ? (
+                <div className="relative hidden sm:block">
                   <button
+                    type="button"
                     onClick={() => setIsProfileOpen(!isProfileOpen)}
-                    className="flex items-center gap-2 rounded-full bg-white/70 py-1 pl-1 pr-2 text-sm shadow-sm ring-1 ring-primary-900/10 transition hover:bg-white focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2"
+                    className="flex items-center gap-2 rounded-full border border-slate-200 bg-transparent py-1 pl-1 pr-2.5 text-sm text-slate-700 transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-200 dark:border-white/25 dark:text-white dark:hover:bg-white/10 dark:focus:ring-white/30"
                   >
-                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary-900">
-                      <User className="h-4 w-4 text-gold-100" />
+                    <div className="flex h-7 w-7 items-center justify-center rounded-full bg-slate-100 dark:bg-white/15">
+                      <User className="h-3.5 w-3.5 text-slate-600 dark:text-white" />
                     </div>
-                    <span className="max-w-[9rem] truncate font-medium text-primary-900">{currentUser.displayName}</span>
-                    <ChevronDown className="h-4 w-4 text-gray-400" />
+                    <span className="max-w-[7.5rem] truncate font-medium">{currentUser.displayName}</span>
+                    <ChevronDown className="h-3.5 w-3.5 text-slate-400 dark:text-white/70" />
                   </button>
 
                   {isProfileOpen && (
-                    <div className="absolute right-0 z-50 mt-3 w-52 origin-top-right rounded-2xl border border-primary-900/10 bg-white/95 p-2 shadow-2xl shadow-primary-900/15 backdrop-blur">
+                    <div className="absolute right-0 z-50 mt-3 w-56 origin-top-right rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl shadow-black/5 backdrop-blur-xl dark:border-white/10 dark:bg-slate-950/95 dark:shadow-black/40">
                       <div className="space-y-1">
+                        {currentUser.isPremium && (
+                          <div className="mb-1 flex items-center gap-1 rounded-xl bg-gold-100/15 px-3 py-2 text-xs font-semibold text-gold-600 dark:text-gold-200">
+                            <Crown className="h-3 w-3" />
+                            Premium
+                          </div>
+                        )}
                         <Link
                           to="/profile"
-                          className="flex items-center rounded-xl px-3 py-2 text-sm text-gray-700 hover:bg-primary-50"
+                          className="flex items-center rounded-xl px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 dark:text-white/85 dark:hover:bg-white/10"
                           onClick={() => setIsProfileOpen(false)}
                         >
                           <User className="mr-2 h-4 w-4" />
@@ -115,16 +124,29 @@ const Navbar: React.FC = () => {
                         </Link>
                         <Link
                           to="/settings"
-                          className="flex items-center rounded-xl px-3 py-2 text-sm text-gray-700 hover:bg-primary-50"
+                          className="flex items-center rounded-xl px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 dark:text-white/85 dark:hover:bg-white/10"
                           onClick={() => setIsProfileOpen(false)}
                         >
                           <Settings className="mr-2 h-4 w-4" />
                           Settings
                         </Link>
+                        <button
+                          type="button"
+                          onClick={toggleTheme}
+                          className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 dark:text-white/85 dark:hover:bg-white/10"
+                        >
+                          <span className="inline-flex items-center">
+                            {isDark ? <Sun className="mr-2 h-4 w-4" /> : <Moon className="mr-2 h-4 w-4" />}
+                            {isDark ? 'Light mode' : 'Dark mode'}
+                          </span>
+                          <span className={`relative h-5 w-9 rounded-full transition ${isDark ? 'bg-sky-500' : 'bg-slate-300'}`}>
+                            <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition ${isDark ? 'left-4' : 'left-0.5'}`} />
+                          </span>
+                        </button>
                         {!currentUser.isPremium && (
                           <Link
                             to="/premium"
-                            className="flex items-center rounded-xl px-3 py-2 text-sm text-gray-700 hover:bg-primary-50"
+                            className="flex items-center rounded-xl px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 dark:text-white/85 dark:hover:bg-white/10"
                             onClick={() => setIsProfileOpen(false)}
                           >
                             <Crown className="mr-2 h-4 w-4" />
@@ -132,8 +154,9 @@ const Navbar: React.FC = () => {
                           </Link>
                         )}
                         <button
+                          type="button"
                           onClick={handleLogout}
-                          className="flex w-full items-center rounded-xl px-3 py-2 text-sm text-gray-700 hover:bg-primary-50"
+                          className="flex w-full items-center rounded-xl px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 dark:text-white/85 dark:hover:bg-white/10"
                         >
                           <LogOut className="mr-2 h-4 w-4" />
                           Sign out
@@ -142,124 +165,143 @@ const Navbar: React.FC = () => {
                     </div>
                   )}
                 </div>
-              </div>
-            ) : (
-              <div className="flex items-center gap-2">
-                <Link
-                  to="/login"
-                  className="rounded-full px-4 py-2 text-sm font-semibold text-primary-900/75 transition hover:bg-white/70 hover:text-primary-900"
-                >
-                  Sign in
-                </Link>
-                <Link
-                  to="/register"
-                  className="inline-flex items-center rounded-full bg-primary-900 px-4 py-2 text-sm font-semibold text-white shadow-lg shadow-primary-900/20 transition hover:-translate-y-0.5 hover:bg-primary-800 hover:shadow-primary-900/25"
-                >
-                  Get Started
-                  <ArrowRight className="ml-1.5 h-4 w-4" />
-                </Link>
-              </div>
-            )}
-          </div>
-
-          <div className="flex items-center sm:hidden">
-            <button
-              onClick={() => setIsMenuOpen(!isMenuOpen)}
-              className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/70 text-primary-900 shadow-sm ring-1 ring-primary-900/10 transition hover:bg-white focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary-500"
-              aria-label="Toggle navigation"
-            >
-              {isMenuOpen ? (
-                <X className="block h-5 w-5" />
               ) : (
-                <Menu className="block h-5 w-5" />
-              )}
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {isMenuOpen && (
-        <div className="mx-auto mt-2 max-w-7xl rounded-3xl border border-primary-900/[0.12] bg-[#fbfcf8] p-4 shadow-2xl shadow-primary-900/20 backdrop-blur-xl sm:hidden">
-          <div className="space-y-1">
-            {currentUser ? (
-              <>
-                {navigation.map((item) => (
-                  <Link
-                    key={item.name}
-                    to={item.href}
-                    className={mobileLinkClass}
-                    onClick={() => setIsMenuOpen(false)}
-                  >
-                    {item.name}
-                  </Link>
-                ))}
-
-                {currentUser.role === 'coach' && coachNavigation.map((item) => (
-                  <Link
-                    key={item.name}
-                    to={item.href}
-                    className={mobileLinkClass}
-                    onClick={() => setIsMenuOpen(false)}
-                  >
-                    {item.name}
-                  </Link>
-                ))}
-
-                <div className="mt-3 border-t border-primary-900/10 pt-4">
-                  <div className="flex items-center rounded-2xl bg-primary-50 px-3 py-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary-900">
-                      <User className="h-5 w-5 text-gold-100" />
-                    </div>
-                    <div className="ml-3 min-w-0">
-                      <div className="truncate text-base font-medium text-gray-800">{currentUser.displayName}</div>
-                      <div className="truncate text-sm font-medium text-gray-500">{currentUser.email}</div>
-                    </div>
-                  </div>
-                  <div className="mt-3 space-y-1">
+                <div className="hidden items-center gap-2 sm:flex">
+                  {!isLandingPage && (
                     <Link
-                      to="/profile"
-                      className="block rounded-lg px-3 py-2 text-base font-medium text-gray-600 hover:bg-primary-50 hover:text-primary-800"
-                      onClick={() => setIsMenuOpen(false)}
+                      to="/login"
+                      className="rounded-full px-3 py-1.5 text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 dark:text-white/80 dark:hover:bg-white/10 dark:hover:text-white"
                     >
-                      Profile
+                      Sign in
                     </Link>
-                    <Link
-                      to="/settings"
-                      className="block rounded-lg px-3 py-2 text-base font-medium text-gray-600 hover:bg-primary-50 hover:text-primary-800"
-                      onClick={() => setIsMenuOpen(false)}
-                    >
-                      Settings
-                    </Link>
-                    <button
-                      onClick={handleLogout}
-                      className="block w-full rounded-lg px-3 py-2 text-left text-base font-medium text-gray-600 hover:bg-primary-50 hover:text-primary-800"
-                    >
-                      Sign out
-                    </button>
-                  </div>
+                  )}
+                  <Link
+                    to="/register"
+                    className="inline-flex items-center rounded-full border border-slate-200 px-3.5 py-1.5 text-sm font-semibold text-slate-900 transition hover:bg-slate-50 dark:border-white/30 dark:text-white dark:hover:bg-white/10"
+                  >
+                    Get Started
+                    <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
+                  </Link>
                 </div>
-              </>
-            ) : (
-              <div className="space-y-3">
-                <Link
-                  to="/login"
-                  className="block rounded-full bg-white px-4 py-3 text-center text-base font-semibold text-primary-900 shadow-sm ring-1 ring-primary-900/10 hover:bg-primary-50"
-                  onClick={() => setIsMenuOpen(false)}
-                >
-                  Sign in
-                </Link>
-                <Link
-                  to="/register"
-                  className="block rounded-full bg-primary-900 px-4 py-3 text-center text-base font-semibold text-white shadow-lg shadow-primary-900/25 hover:bg-primary-800"
-                  onClick={() => setIsMenuOpen(false)}
-                >
-                  Get Started
-                </Link>
-              </div>
-            )}
+              )}
+
+              <button
+                type="button"
+                onClick={() => setIsMenuOpen(!isMenuOpen)}
+                className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 text-slate-700 transition hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-slate-200 dark:border-white/25 dark:text-white dark:hover:bg-white/10 dark:focus:ring-white/30 sm:hidden"
+                aria-label="Toggle navigation"
+              >
+                {isMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+              </button>
+            </div>
           </div>
         </div>
-      )}
+
+        {isMenuOpen && (
+          <div className="mt-2 rounded-3xl border border-slate-200 bg-white/95 p-4 shadow-2xl shadow-black/5 backdrop-blur-xl dark:border-white/15 dark:bg-slate-950/90 dark:shadow-black/30 sm:hidden">
+            <div className="space-y-1">
+              {currentUser ? (
+                <>
+                  {navigation.map((item) => (
+                    <Link
+                      key={item.name}
+                      to={item.href}
+                      className={`block rounded-xl px-3 py-2 text-base font-medium transition ${
+                        location.pathname === item.href
+                          ? 'bg-slate-900/10 text-slate-900 dark:bg-white/15 dark:text-white'
+                          : 'text-slate-600 hover:bg-slate-900/5 hover:text-slate-900 dark:text-white/80 dark:hover:bg-white/10 dark:hover:text-white'
+                      }`}
+                      onClick={() => setIsMenuOpen(false)}
+                    >
+                      {item.name}
+                    </Link>
+                  ))}
+
+                  {currentUser.role === 'coach' && coachNavigation.map((item) => (
+                    <Link
+                      key={item.name}
+                      to={item.href}
+                      className={`block rounded-xl px-3 py-2 text-base font-medium transition ${
+                        location.pathname === item.href
+                          ? 'bg-slate-900/10 text-slate-900 dark:bg-white/15 dark:text-white'
+                          : 'text-slate-600 hover:bg-slate-900/5 hover:text-slate-900 dark:text-white/80 dark:hover:bg-white/10 dark:hover:text-white'
+                      }`}
+                      onClick={() => setIsMenuOpen(false)}
+                    >
+                      {item.name}
+                    </Link>
+                  ))}
+
+                  <div className="mt-3 border-t border-slate-100 pt-4 dark:border-white/10">
+                    <div className="flex items-center rounded-2xl bg-slate-50 px-3 py-3 dark:bg-white/10">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-200 dark:bg-white/15">
+                        <User className="h-5 w-5 text-slate-600 dark:text-white" />
+                      </div>
+                      <div className="ml-3 min-w-0">
+                        <div className="truncate text-base font-medium text-slate-900 dark:text-white">{currentUser.displayName}</div>
+                        <div className="truncate text-sm font-medium text-slate-500 dark:text-white/60">{currentUser.email}</div>
+                      </div>
+                    </div>
+                    <div className="mt-3 space-y-1">
+                      <Link
+                        to="/profile"
+                        className="block rounded-lg px-3 py-2 text-base font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 dark:text-white/80 dark:hover:bg-white/10 dark:hover:text-white"
+                        onClick={() => setIsMenuOpen(false)}
+                      >
+                        Profile
+                      </Link>
+                      <Link
+                        to="/settings"
+                        className="block rounded-lg px-3 py-2 text-base font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 dark:text-white/80 dark:hover:bg-white/10 dark:hover:text-white"
+                        onClick={() => setIsMenuOpen(false)}
+                      >
+                        Settings
+                      </Link>
+                      <button
+                        type="button"
+                        onClick={toggleTheme}
+                        className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-base font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 dark:text-white/80 dark:hover:bg-white/10 dark:hover:text-white"
+                      >
+                        <span className="inline-flex items-center">
+                          {isDark ? <Sun className="mr-2 h-4 w-4" /> : <Moon className="mr-2 h-4 w-4" />}
+                          {isDark ? 'Light mode' : 'Dark mode'}
+                        </span>
+                        <span className={`relative h-5 w-9 rounded-full transition ${isDark ? 'bg-sky-500' : 'bg-slate-300'}`}>
+                          <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition ${isDark ? 'left-4' : 'left-0.5'}`} />
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleLogout}
+                        className="block w-full rounded-lg px-3 py-2 text-left text-base font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-900 dark:text-white/80 dark:hover:bg-white/10 dark:hover:text-white"
+                      >
+                        Sign out
+                      </button>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="space-y-3">
+                  <Link
+                    to="/login"
+                    className="block rounded-full border border-slate-200 px-4 py-3 text-center text-base font-semibold text-slate-900 hover:bg-slate-50 dark:border-white/25 dark:text-white dark:hover:bg-white/10"
+                    onClick={() => setIsMenuOpen(false)}
+                  >
+                    Sign in
+                  </Link>
+                  <Link
+                    to="/register"
+                    className="block rounded-full bg-slate-900 px-4 py-3 text-center text-base font-semibold text-white hover:bg-slate-800 dark:bg-white dark:text-slate-950 dark:hover:bg-white/90"
+                    onClick={() => setIsMenuOpen(false)}
+                  >
+                    Get Started
+                  </Link>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
     </nav>
   );
 };
