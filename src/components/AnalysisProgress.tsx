@@ -71,7 +71,7 @@ const AnalysisProgress: React.FC<AnalysisProgressProps> = ({
   const getStatusColor = () => {
     switch (progress?.status) {
       case 'analyzing':
-        return 'text-blue-600';
+        return 'text-primary-600';
       case 'completed':
         return 'text-green-600';
       case 'error':

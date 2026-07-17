@@ -36,6 +36,7 @@ export interface ImportGameRequest {
   username: string;
   count?: number;
   rated?: boolean;
+  allGames?: boolean;
   variant?: string;
 }
 

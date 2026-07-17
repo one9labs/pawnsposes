@@ -2,21 +2,133 @@
 @tailwind components;
 @tailwind utilities;
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap');
 
 @layer base {
   * {
     @apply border-border;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply text-foreground;
     font-feature-settings: "rlig" 1, "calt" 1;
+    background-color: #f4f8f5;
+    background-image:
+      radial-gradient(ellipse 80% 50% at 10% -10%, rgba(44, 138, 85, 0.16), transparent 55%),
+      radial-gradient(ellipse 70% 40% at 90% 0%, rgba(201, 144, 18, 0.10), transparent 50%);
+    background-attachment: fixed;
+  }
+
+  .dark body {
+    color: #e2e8f0;
+    background-color: #0a1611;
+    background-image:
+      radial-gradient(ellipse 80% 50% at 10% -10%, rgba(44, 138, 85, 0.18), transparent 55%),
+      radial-gradient(ellipse 70% 40% at 90% 0%, rgba(201, 144, 18, 0.08), transparent 50%);
   }
 }
 
 @layer components {
+  .surface-card {
+    @apply rounded-2xl border border-ink-100 bg-white shadow-soft dark:border-slate-700 dark:bg-slate-900/70;
+  }
+
+  /* Soft UI Evolution list card — solid surface, subtle border, soft elevation */
+  .game-card {
+    @apply relative overflow-hidden rounded-2xl border border-slate-200/90 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04),0_8px_24px_rgba(15,23,42,0.06)] transition-all duration-200 ease-out dark:border-slate-700 dark:bg-slate-900/80 dark:shadow-[0_1px_2px_rgba(0,0,0,0.2),0_8px_24px_rgba(0,0,0,0.25)];
+  }
+
+  .game-card:hover {
+    @apply border-slate-300/90 shadow-[0_4px_12px_rgba(15,23,42,0.08),0_16px_32px_rgba(15,23,42,0.08)] dark:border-slate-600 dark:shadow-[0_4px_12px_rgba(0,0,0,0.3),0_16px_32px_rgba(0,0,0,0.35)];
+  }
+
+  @media (hover: hover) and (prefers-reduced-motion: no-preference) {
+    .game-card:hover {
+      @apply -translate-y-0.5;
+    }
+  }
+
+  .game-card-accent {
+    @apply absolute inset-y-0 left-0 w-1;
+  }
+
+  .glass-panel {
+    @apply rounded-2xl border border-white/60 bg-white/80 shadow-soft backdrop-blur-xl dark:border-slate-700 dark:bg-slate-900/80;
+  }
+
+  /* Open header band — blends into page background, no box */
+  .aurora-panel {
+    @apply rounded-none border-0 bg-transparent p-0 text-slate-900 shadow-none dark:text-slate-100;
+  }
+
+  /* Soft content band — light surface without hard card framing */
+  .aurora-subtle {
+    @apply rounded-none border-0 border-t border-primary-200/70 bg-transparent text-slate-900 dark:border-slate-700/80 dark:text-slate-100;
+  }
+
+  .app-canvas {
+    background-color: #f4f8f5;
+    background-image:
+      radial-gradient(ellipse 80% 50% at 10% -10%, rgba(44, 138, 85, 0.16), transparent 55%),
+      radial-gradient(ellipse 70% 40% at 90% 0%, rgba(201, 144, 18, 0.10), transparent 50%);
+    background-attachment: fixed;
+  }
+
+  .dark .app-canvas {
+    background-color: #0a1611;
+    background-image:
+      radial-gradient(ellipse 80% 50% at 10% -10%, rgba(44, 138, 85, 0.18), transparent 55%),
+      radial-gradient(ellipse 70% 40% at 90% 0%, rgba(201, 144, 18, 0.08), transparent 50%);
+  }
+
+  .surface-subtle {
+    @apply rounded-2xl border border-ink-100/70 bg-ink-50 dark:border-slate-700 dark:bg-slate-900/50;
+  }
+
+  .section-shell {
+    @apply mx-auto max-w-7xl px-4 sm:px-6 lg:px-8;
+  }
+
+  .metric-value {
+    @apply font-display text-3xl font-semibold tracking-tight text-ink-900 dark:text-white;
+  }
+
+  .muted-kicker {
+    @apply text-xs font-semibold uppercase tracking-[0.2em] text-ink-500 dark:text-slate-400;
+  }
+
+  .skeleton-shimmer {
+    background-image: linear-gradient(90deg, rgba(226, 232, 240, 0.8) 25%, rgba(241, 245, 249, 1) 37%, rgba(226, 232, 240, 0.8) 63%);
+    background-size: 400% 100%;
+    animation: skeleton-shimmer 1.2s ease-in-out infinite;
+  }
+
   .chess-board {
     @apply shadow-lg rounded-lg overflow-hidden;
+  }
+
+  /*
+   * Game review board — Chess.com-style interaction.
+   * Never put transition:transform on pieces globally: it fights dnd-kit and
+   * makes dragging feel laggy/blocky. Only ease the library's move animation.
+   */
+  .review-chessboard {
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+  }
+
+  .review-chessboard [data-piece] {
+    /* Instant pointer tracking while dragging (Chess.com feels "stuck to cursor") */
+    transition: none;
+    will-change: auto;
+  }
+
+  /* Snappy ease-out when a piece glides after drop / move scrub */
+  .review-chessboard [data-piece][style*='transition'] {
+    transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1) !important;
+  }
+
+  .review-chessboard [data-square] {
+    transition: background-color 80ms linear;
   }
   
   .move-highlight {
@@ -45,8 +157,23 @@
   }
 }
 
+@keyframes skeleton-shimmer {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: 0 0;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .achievement-track {
     animation: none;
+  }
+
+  .skeleton-shimmer {
+    animation: none;
+    background-image: none;
+    @apply bg-slate-200;
   }
 }

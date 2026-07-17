@@ -107,7 +107,7 @@ const AnalysisSettings: React.FC<AnalysisSettingsProps> = ({
                   key={engine.id}
                   className={`border rounded-lg p-4 cursor-pointer transition-all ${
                     selectedEngine === engine.id
-                      ? 'border-blue-500 bg-blue-50'
+                      ? 'border-primary-500 bg-primary-50'
                       : engine.available
                       ? 'border-gray-200 hover:border-gray-300'
                       : 'border-gray-100 bg-gray-50 cursor-not-allowed'
@@ -128,7 +128,7 @@ const AnalysisSettings: React.FC<AnalysisSettingsProps> = ({
                         {getEngineStatusText(engine.available)}
                       </Badge>
                       {selectedEngine === engine.id && (
-                        <CheckCircle2 className="w-5 h-5 text-blue-600" />
+                        <CheckCircle2 className="w-5 h-5 text-primary-600" />
                       )}
                     </div>
                   </div>
@@ -153,7 +153,7 @@ const AnalysisSettings: React.FC<AnalysisSettingsProps> = ({
                   key={option.value}
                   className={`border rounded-lg p-3 cursor-pointer transition-all ${
                     selectedDepth === option.value
-                      ? 'border-blue-500 bg-blue-50'
+                      ? 'border-primary-500 bg-primary-50'
                       : 'border-gray-200 hover:border-gray-300'
                   }`}
                   onClick={() => setSelectedDepth(option.value)}
@@ -166,7 +166,7 @@ const AnalysisSettings: React.FC<AnalysisSettingsProps> = ({
                       </div>
                     </div>
                     {selectedDepth === option.value && (
-                      <CheckCircle2 className="w-5 h-5 text-blue-600" />
+                      <CheckCircle2 className="w-5 h-5 text-primary-600" />
                     )}
                   </div>
                 </div>
@@ -197,7 +197,7 @@ const AnalysisSettings: React.FC<AnalysisSettingsProps> = ({
           {/* Analysis Summary */}
           <div className="bg-gray-50 rounded-lg p-4">
             <div className="flex items-center gap-2 mb-2">
-              <Info className="w-4 h-4 text-blue-600" />
+              <Info className="w-4 h-4 text-primary-600" />
               <span className="font-medium">Analysis Summary</span>
             </div>
             <div className="text-sm text-gray-600 space-y-1">

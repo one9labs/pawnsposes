@@ -125,7 +125,7 @@ const GamesList: React.FC<GamesListProps> = ({
 
   const getSiteColor = (site: string) => {
     switch (site) {
-      case 'lichess': return 'bg-blue-100 text-blue-800';
+      case 'lichess': return 'bg-primary-100 text-primary-800';
       case 'chess.com': return 'bg-green-100 text-green-800';
       default: return 'bg-gray-100 text-gray-800';
     }
@@ -251,7 +251,7 @@ const GamesList: React.FC<GamesListProps> = ({
 
                     {game.analyzed && game.accuracy && (
                       <div className="flex items-center gap-4 text-sm">
-                        <span className="text-blue-600">
+                        <span className="text-primary-600">
                           White: {game.accuracy.white}% accuracy
                         </span>
                         <span className="text-red-600">

@@ -114,7 +114,7 @@ const FenExtractionTest: React.FC<FenExtractionTestProps> = ({ games, username }
           </div>
           
           {username && (
-            <p className="text-xs text-blue-600">
+            <p className="text-xs text-primary-600">
               Testing with detected username: <strong>{username}</strong>
             </p>
           )}

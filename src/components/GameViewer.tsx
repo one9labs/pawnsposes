@@ -85,7 +85,7 @@ const GameViewer: React.FC<GameViewerProps> = ({ game, analysis, onClose }) => {
   const getClassificationColor = (classification: MoveAnalysis['classification']) => {
     switch (classification) {
       case 'excellent': return 'bg-green-100 text-green-800';
-      case 'good': return 'bg-blue-100 text-blue-800';
+      case 'good': return 'bg-primary-100 text-primary-800';
       case 'inaccuracy': return 'bg-yellow-100 text-yellow-800';
       case 'mistake': return 'bg-orange-100 text-orange-800';
       case 'blunder': return 'bg-red-100 text-red-800';
@@ -330,7 +330,7 @@ const GameViewer: React.FC<GameViewerProps> = ({ game, analysis, onClose }) => {
                       key={index}
                       className={`flex items-center justify-between p-2 rounded cursor-pointer transition-colors ${
                         isCurrentMove 
-                          ? 'bg-blue-100 border border-blue-300' 
+                          ? 'bg-primary-100 border border-primary-300' 
                           : 'hover:bg-gray-50'
                       }`}
                       onClick={() => goToMove(index)}
