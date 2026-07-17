@@ -8,6 +8,12 @@ import { profileAnalysisService } from '../services/profileAnalysisService';
 import { reportService } from '../services/reportService';
 import { ReportGenerationProgress } from '../types/report';
 
+const fieldClassName =
+  'appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:placeholder-slate-400';
+
+const selectClassName =
+  'block w-full px-3 py-2 border border-gray-300 rounded-md bg-white text-gray-900 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100';
+
 const RegisterPage: React.FC = () => {
   const [formData, setFormData] = useState({
     email: '',
@@ -83,14 +89,15 @@ const RegisterPage: React.FC = () => {
   };
 
   const createInitialAnalysis = async (userId: string) => {
-    setLoadingMessage('Analyzing your latest 20 games...');
+    setLoadingMessage('Syncing all of your games...');
     profileAnalysisService.setProgressCallback(setProgress);
 
     await profileAnalysisService.setupProfile({
       userId,
       platform: formData.chessPlatform,
       username: formData.chessUsername.trim(),
-      gameCount: 20
+      gameCount: 20,
+      allGames: true
     });
   };
 
@@ -178,34 +185,34 @@ const RegisterPage: React.FC = () => {
     { text: 'Contains letters and numbers', met: /(?=.*[a-zA-Z])(?=.*\d)/.test(formData.password) },
   ];
 
-  if (loading && (loadingMessage.includes('Analyzing') || progress)) {
+  if (loading && (loadingMessage.includes('Syncing') || loadingMessage.includes('Analyzing') || progress)) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
+      <div className="flex min-h-screen items-center justify-center px-4">
         <Card className="w-full max-w-lg">
           <CardHeader>
-            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-primary-100">
-              <Loader2 className="h-6 w-6 animate-spin text-primary-600" />
+            <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-primary-100 dark:bg-primary-500/20">
+              <Loader2 className="h-6 w-6 animate-spin text-primary-600 dark:text-primary-300" />
             </div>
-            <CardTitle className="text-center">Analyzing your games</CardTitle>
+            <CardTitle className="text-center">Syncing your games</CardTitle>
             <CardDescription className="text-center">
-              We are fetching your latest 20 games and building your first chess report. This only happens once during setup.
+              We are fetching your full game history from the chess API and saving your profile. This can take a few minutes for active accounts.
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="rounded-md bg-blue-50 p-4">
-              <div className="mb-2 flex items-center justify-between text-sm text-blue-900">
+            <div className="rounded-md bg-primary-50 p-4 dark:bg-primary-500/15">
+              <div className="mb-2 flex items-center justify-between text-sm text-primary-900 dark:text-primary-100">
                 <span>{progress?.message || loadingMessage}</span>
                 <span>{progress?.progress || 0}%</span>
               </div>
-              <div className="h-2 rounded-full bg-blue-200">
+              <div className="h-2 rounded-full bg-primary-200 dark:bg-primary-900/60">
                 <div
-                  className="h-2 rounded-full bg-blue-600 transition-all"
+                  className="h-2 rounded-full bg-primary-600 transition-all dark:bg-primary-400"
                   style={{ width: `${progress?.progress || 8}%` }}
                 />
               </div>
             </div>
-            <p className="mt-4 text-center text-sm text-gray-500">
-              Keep this tab open. Your dashboard will appear automatically when the analysis is ready.
+            <p className="mt-4 text-center text-sm text-gray-500 dark:text-slate-400">
+              Keep this tab open. Your dashboard will appear automatically when the sync is ready.
             </p>
           </CardContent>
         </Card>
@@ -214,19 +221,19 @@ const RegisterPage: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
+    <div className="flex min-h-screen flex-col justify-center py-12 sm:px-6 lg:px-8">
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
         <div className="flex justify-center">
-          <div className="w-12 h-12 bg-primary-600 rounded-lg flex items-center justify-center">
-            <span className="text-white font-bold text-2xl">♔</span>
+          <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary-600">
+            <span className="text-2xl font-bold text-white">♔</span>
           </div>
         </div>
-        <h2 className="mt-6 text-center text-3xl font-bold text-gray-900">
+        <h2 className="mt-6 text-center text-3xl font-bold text-gray-900 dark:text-white">
           Create your account
         </h2>
-        <p className="mt-2 text-center text-sm text-gray-600">
+        <p className="mt-2 text-center text-sm text-gray-600 dark:text-slate-300">
           Or{' '}
-          <Link to="/login" className="font-medium text-primary-600 hover:text-primary-500">
+          <Link to="/login" className="font-medium text-primary-600 hover:text-primary-500 dark:text-primary-300 dark:hover:text-primary-200">
             sign in to your existing account
           </Link>
         </p>
@@ -243,18 +250,18 @@ const RegisterPage: React.FC = () => {
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-6">
               {error && (
-                <div className="bg-red-50 border border-red-200 rounded-md p-4">
+                <div className="rounded-md border border-red-200 bg-red-50 p-4 dark:border-red-500/40 dark:bg-red-500/10">
                   <div className="flex">
                     <AlertCircle className="h-5 w-5 text-red-400" />
                     <div className="ml-3">
-                      <p className="text-sm text-red-800">{error}</p>
+                      <p className="text-sm text-red-800 dark:text-red-200">{error}</p>
                     </div>
                   </div>
                 </div>
               )}
 
               <div>
-                <label htmlFor="displayName" className="block text-sm font-medium text-gray-700">
+                <label htmlFor="displayName" className="block text-sm font-medium text-gray-700 dark:text-slate-200">
                   Full Name
                 </label>
                 <div className="mt-1">
@@ -265,14 +272,14 @@ const RegisterPage: React.FC = () => {
                     required
                     value={formData.displayName}
                     onChange={handleChange}
-                    className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md placeholder-gray-400 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
+                    className={fieldClassName}
                     placeholder="Enter your full name"
                   />
                 </div>
               </div>
 
               <div>
-                <label htmlFor="email" className="block text-sm font-medium text-gray-700">
+                <label htmlFor="email" className="block text-sm font-medium text-gray-700 dark:text-slate-200">
                   Email address
                 </label>
                 <div className="mt-1">
@@ -284,14 +291,14 @@ const RegisterPage: React.FC = () => {
                     required
                     value={formData.email}
                     onChange={handleChange}
-                    className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md placeholder-gray-400 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
+                    className={fieldClassName}
                     placeholder="Enter your email"
                   />
                 </div>
               </div>
 
               <div>
-                <label htmlFor="role" className="block text-sm font-medium text-gray-700">
+                <label htmlFor="role" className="block text-sm font-medium text-gray-700 dark:text-slate-200">
                   I am a...
                 </label>
                 <div className="mt-1">
@@ -300,7 +307,7 @@ const RegisterPage: React.FC = () => {
                     name="role"
                     value={formData.role}
                     onChange={handleChange}
-                    className="block w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
+                    className={selectClassName}
                   >
                     <option value="child">Chess Player</option>
                     <option value="parent">Parent</option>
@@ -311,7 +318,7 @@ const RegisterPage: React.FC = () => {
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-[140px_1fr]">
                 <div>
-                  <label htmlFor="chessPlatform" className="block text-sm font-medium text-gray-700">
+                  <label htmlFor="chessPlatform" className="block text-sm font-medium text-gray-700 dark:text-slate-200">
                     Chess Platform
                   </label>
                   <div className="mt-1">
@@ -320,7 +327,7 @@ const RegisterPage: React.FC = () => {
                       name="chessPlatform"
                       value={formData.chessPlatform}
                       onChange={handleChange}
-                      className="block w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
+                      className={selectClassName}
                       disabled={loading}
                     >
                       <option value="lichess">Lichess</option>
@@ -330,7 +337,7 @@ const RegisterPage: React.FC = () => {
                 </div>
 
                 <div>
-                  <label htmlFor="chessUsername" className="block text-sm font-medium text-gray-700">
+                  <label htmlFor="chessUsername" className="block text-sm font-medium text-gray-700 dark:text-slate-200">
                     Chess Username
                   </label>
                   <div className="mt-1">
@@ -341,7 +348,7 @@ const RegisterPage: React.FC = () => {
                       required
                       value={formData.chessUsername}
                       onChange={handleChange}
-                      className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md placeholder-gray-400 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
+                      className={fieldClassName}
                       placeholder="Your Lichess or Chess.com username"
                       disabled={loading}
                     />
@@ -350,10 +357,10 @@ const RegisterPage: React.FC = () => {
               </div>
 
               <div>
-                <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+                <label htmlFor="password" className="block text-sm font-medium text-gray-700 dark:text-slate-200">
                   Password
                 </label>
-                <div className="mt-1 relative">
+                <div className="relative mt-1">
                   <input
                     id="password"
                     name="password"
@@ -362,18 +369,18 @@ const RegisterPage: React.FC = () => {
                     required
                     value={formData.password}
                     onChange={handleChange}
-                    className="appearance-none block w-full px-3 py-2 pr-10 border border-gray-300 rounded-md placeholder-gray-400 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
+                    className={`${fieldClassName} pr-10`}
                     placeholder="Create a password"
                   />
                   <button
                     type="button"
-                    className="absolute inset-y-0 right-0 pr-3 flex items-center"
+                    className="absolute inset-y-0 right-0 flex items-center pr-3"
                     onClick={() => setShowPassword(!showPassword)}
                   >
                     {showPassword ? (
-                      <EyeOff className="h-4 w-4 text-gray-400" />
+                      <EyeOff className="h-4 w-4 text-gray-400 dark:text-slate-400" />
                     ) : (
-                      <Eye className="h-4 w-4 text-gray-400" />
+                      <Eye className="h-4 w-4 text-gray-400 dark:text-slate-400" />
                     )}
                   </button>
                 </div>
@@ -383,9 +390,9 @@ const RegisterPage: React.FC = () => {
                     {passwordRequirements.map((req, index) => (
                       <div key={index} className="flex items-center text-xs">
                         <CheckCircle 
-                          className={`w-3 h-3 mr-2 ${req.met ? 'text-green-500' : 'text-gray-300'}`}
+                          className={`mr-2 h-3 w-3 ${req.met ? 'text-green-500' : 'text-gray-300 dark:text-slate-600'}`}
                         />
-                        <span className={req.met ? 'text-green-600' : 'text-gray-500'}>
+                        <span className={req.met ? 'text-green-600 dark:text-green-400' : 'text-gray-500 dark:text-slate-400'}>
                           {req.text}
                         </span>
                       </div>
@@ -395,10 +402,10 @@ const RegisterPage: React.FC = () => {
               </div>
 
               <div>
-                <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700">
+                <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700 dark:text-slate-200">
                   Confirm Password
                 </label>
-                <div className="mt-1 relative">
+                <div className="relative mt-1">
                   <input
                     id="confirmPassword"
                     name="confirmPassword"
@@ -407,18 +414,18 @@ const RegisterPage: React.FC = () => {
                     required
                     value={formData.confirmPassword}
                     onChange={handleChange}
-                    className="appearance-none block w-full px-3 py-2 pr-10 border border-gray-300 rounded-md placeholder-gray-400 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
+                    className={`${fieldClassName} pr-10`}
                     placeholder="Confirm your password"
                   />
                   <button
                     type="button"
-                    className="absolute inset-y-0 right-0 pr-3 flex items-center"
+                    className="absolute inset-y-0 right-0 flex items-center pr-3"
                     onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                   >
                     {showConfirmPassword ? (
-                      <EyeOff className="h-4 w-4 text-gray-400" />
+                      <EyeOff className="h-4 w-4 text-gray-400 dark:text-slate-400" />
                     ) : (
-                      <Eye className="h-4 w-4 text-gray-400" />
+                      <Eye className="h-4 w-4 text-gray-400 dark:text-slate-400" />
                     )}
                   </button>
                 </div>
@@ -430,15 +437,15 @@ const RegisterPage: React.FC = () => {
                   name="terms"
                   type="checkbox"
                   required
-                  className="h-4 w-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                  className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500 dark:border-slate-600 dark:bg-slate-800"
                 />
-                <label htmlFor="terms" className="ml-2 block text-sm text-gray-900">
+                <label htmlFor="terms" className="ml-2 block text-sm text-gray-900 dark:text-slate-200">
                   I agree to the{' '}
-                  <Link to="/terms" className="text-primary-600 hover:text-primary-500">
+                  <Link to="/terms" className="text-primary-600 hover:text-primary-500 dark:text-primary-300 dark:hover:text-primary-200">
                     Terms of Service
                   </Link>{' '}
                   and{' '}
-                  <Link to="/privacy" className="text-primary-600 hover:text-primary-500">
+                  <Link to="/privacy" className="text-primary-600 hover:text-primary-500 dark:text-primary-300 dark:hover:text-primary-200">
                     Privacy Policy
                   </Link>
                 </label>
@@ -460,13 +467,13 @@ const RegisterPage: React.FC = () => {
               </div>
 
               {progress && (
-                <div className="rounded-md bg-blue-50 p-3">
-                  <div className="mb-1 flex items-center justify-between text-sm text-blue-800">
+                <div className="rounded-md bg-primary-50 p-3 dark:bg-primary-500/15">
+                  <div className="mb-1 flex items-center justify-between text-sm text-primary-800 dark:text-primary-100">
                     <span>{progress.message}</span>
                     <span>{progress.progress}%</span>
                   </div>
-                  <div className="h-2 rounded-full bg-blue-200">
-                    <div className="h-2 rounded-full bg-blue-600" style={{ width: `${progress.progress}%` }} />
+                  <div className="h-2 rounded-full bg-primary-200 dark:bg-primary-900/60">
+                    <div className="h-2 rounded-full bg-primary-600 dark:bg-primary-400" style={{ width: `${progress.progress}%` }} />
                   </div>
                 </div>
               )}
@@ -475,16 +482,16 @@ const RegisterPage: React.FC = () => {
             <div className="mt-6">
               <div className="relative">
                 <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-gray-300" />
+                  <div className="w-full border-t border-gray-300 dark:border-slate-600" />
                 </div>
                 <div className="relative flex justify-center text-sm">
-                  <span className="px-2 bg-white text-gray-500">Or continue with</span>
+                  <span className="bg-white px-2 text-gray-500 dark:bg-slate-900 dark:text-slate-400">Or continue with</span>
                 </div>
               </div>
 
               <div className="mt-6">
-                <div className="mb-4 rounded-md border border-gray-200 bg-gray-50 p-3">
-                  <p className="mb-3 text-sm font-medium text-gray-800">
+                <div className="mb-4 rounded-md border border-gray-200 bg-gray-50 p-3 dark:border-slate-600 dark:bg-slate-800/70">
+                  <p className="mb-3 text-sm font-medium text-gray-800 dark:text-slate-100">
                     Chess account for Google signup
                   </p>
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-[130px_1fr]">
@@ -493,7 +500,7 @@ const RegisterPage: React.FC = () => {
                       name="chessPlatform"
                       value={formData.chessPlatform}
                       onChange={handleChange}
-                      className="block w-full px-3 py-2 border border-gray-300 rounded-md bg-white focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
+                      className={selectClassName}
                       disabled={loading}
                     >
                       <option value="lichess">Lichess</option>
@@ -505,7 +512,7 @@ const RegisterPage: React.FC = () => {
                       type="text"
                       value={formData.chessUsername}
                       onChange={handleChange}
-                      className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md placeholder-gray-400 bg-white focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
+                      className={fieldClassName}
                       placeholder="Chess username"
                       disabled={loading}
                     />
@@ -518,7 +525,7 @@ const RegisterPage: React.FC = () => {
                   onClick={handleGoogleSignIn}
                   disabled={loading}
                 >
-                  <svg className="w-5 h-5 mr-2" viewBox="0 0 24 24">
+                  <svg className="mr-2 h-5 w-5" viewBox="0 0 24 24">
                     <path
                       fill="currentColor"
                       d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"

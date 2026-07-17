@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { 
   User as FirebaseUser, 
   signInWithEmailAndPassword, 
@@ -13,6 +13,7 @@ import {
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db } from '../services/firebase';
 import { User } from '../types';
+import { fileToAvatarDataUrl } from '../utils/avatar';
 
 interface AuthContextType {
   currentUser: User | null;
@@ -21,6 +22,8 @@ interface AuthContextType {
   loginWithGoogle: () => Promise<{ user: User; isNewUser: boolean }>;
   register: (email: string, password: string, displayName: string, role: string) => Promise<User>;
   logout: () => Promise<void>;
+  updateAvatar: (file: File) => Promise<void>;
+  setAvatarUrl: (avatarUrl: string | null) => Promise<void>;
   loading: boolean;
 }
 
@@ -38,6 +41,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const currentUserRef = useRef<User | null>(null);
+  currentUserRef.current = currentUser;
 
   const login = async (email: string, password: string) => {
     try {
@@ -76,6 +81,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           displayName: data.displayName || user.displayName || 'User',
           role: data.role || 'child',
           isPremium: data.isPremium || false,
+          avatarUrl: data.avatarUrl || user.photoURL || null,
           createdAt: data.createdAt ? new Date(data.createdAt) : new Date()
         };
       }
@@ -87,6 +93,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const data = JSON.parse(cachedUser);
         return {
           ...data,
+          avatarUrl: data.avatarUrl || user.photoURL || null,
           createdAt: data.createdAt ? new Date(data.createdAt) : new Date()
         };
       }
@@ -98,6 +105,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       displayName: user.displayName || 'User',
       role: 'child',
       isPremium: false,
+      avatarUrl: user.photoURL || null,
       createdAt: new Date()
     };
 
@@ -140,6 +148,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         displayName: displayName,
         role: role as 'child' | 'parent' | 'coach' | 'admin',
         isPremium: false,
+        avatarUrl: result.user.photoURL || null,
         createdAt: new Date()
       };
 
@@ -167,6 +176,29 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       throw error;
     }
   };
+
+  const setAvatarUrl = useCallback(async (avatarUrl: string | null) => {
+    const prev = currentUserRef.current;
+    if (!prev) return;
+
+    const updatedUser: User = { ...prev, avatarUrl };
+    currentUserRef.current = updatedUser;
+    setCurrentUser(updatedUser);
+    await saveUserData(updatedUser);
+  }, [saveUserData]);
+
+  const updateAvatar = useCallback(async (file: File) => {
+    const prev = currentUserRef.current;
+    if (!prev) {
+      throw new Error('You must be signed in to update your avatar.');
+    }
+
+    const avatarUrl = await fileToAvatarDataUrl(file);
+    const updatedUser: User = { ...prev, avatarUrl };
+    currentUserRef.current = updatedUser;
+    setCurrentUser(updatedUser);
+    await saveUserData(updatedUser);
+  }, [saveUserData]);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
@@ -198,6 +230,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     loginWithGoogle,
     register,
     logout,
+    updateAvatar,
+    setAvatarUrl,
     loading
   };
 
