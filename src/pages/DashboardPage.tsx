@@ -1,26 +1,35 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { useAuth } from '../contexts/AuthContext';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/Card';
+import { useAuth } from '../contexts/AuthContext';
+import { Card, CardContent } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
+import EmptyState from '../components/ui/EmptyState';
+import Skeleton from '../components/ui/Skeleton';
 import { 
-  BarChart3, 
-  Target, 
+  CalendarDays,
+  Camera,
+  Gamepad2,
+  Hash,
+  Medal,
   TrendingUp, 
-  Plus,
-  ArrowRight,
   RefreshCw,
   AlertCircle,
-  FileText
+  FileText,
+  SearchX
 } from 'lucide-react';
 import { profileAnalysisService } from '../services/profileAnalysisService';
 import { PlayerAnalysisProfile } from '../types/profileAnalysis';
 import { GameReportRequest, ReportGenerationProgress } from '../types/report';
 import ReportPopup from '../components/ReportPopup';
+import { persistSelectedGame } from '../utils/selectedGame';
+import { ChessGame } from '../types/game';
+
+const isCustomAvatar = (url?: string | null) => Boolean(url?.startsWith('data:'));
 
 const DashboardPage: React.FC = () => {
-  const { currentUser } = useAuth();
+  const { currentUser, updateAvatar, setAvatarUrl } = useAuth();
   const navigate = useNavigate();
+  const avatarInputRef = useRef<HTMLInputElement>(null);
   const [profile, setProfile] = useState<PlayerAnalysisProfile | null>(null);
   const [platform, setPlatform] = useState<'lichess' | 'chess.com'>('lichess');
   const [username, setUsername] = useState('');
@@ -30,6 +39,8 @@ const DashboardPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [isLoadingProfile, setIsLoadingProfile] = useState(true);
   const [isReportPopupOpen, setIsReportPopupOpen] = useState(false);
+  const [chessAvatarUrl, setChessAvatarUrl] = useState<string | null>(null);
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -56,43 +67,173 @@ const DashboardPage: React.FC = () => {
   }, [currentUser?.id]);
 
   const report = profile?.report || null;
+  useEffect(() => {
+    let isMounted = true;
 
-  const reportGames = useMemo(() => {
-    return report?.rawGameData || profile?.games || [];
-  }, [profile?.games, report?.rawGameData]);
+    const loadChessAvatar = async () => {
+      if (!profile?.username || profile.platform !== 'chess.com') {
+        setChessAvatarUrl(null);
+        return;
+      }
 
-  const latestGames = reportGames.slice(0, 3);
-  const averageAccuracy = report?.executiveSummary.averageAccuracy || 0;
-  const overallRating = report?.executiveSummary.overallRating || 0;
+      try {
+        const response = await fetch(`https://api.chess.com/pub/player/${profile.username}`);
+        if (!response.ok) {
+          if (isMounted) setChessAvatarUrl(null);
+          return;
+        }
+        const data = await response.json();
+        if (isMounted) {
+          setChessAvatarUrl(typeof data?.avatar === 'string' ? data.avatar : null);
+        }
+      } catch (avatarError) {
+        console.error('Could not load chess.com avatar:', avatarError);
+        if (isMounted) {
+          setChessAvatarUrl(null);
+        }
+      }
+    };
+
+    loadChessAvatar();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [profile?.platform, profile?.username]);
+
+  // Keep navbar in sync with the chess.com avatar when the user hasn't set a custom photo.
+  useEffect(() => {
+    if (!chessAvatarUrl || !currentUser?.id) return;
+    if (isCustomAvatar(currentUser.avatarUrl)) return;
+    if (currentUser.avatarUrl === chessAvatarUrl) return;
+    void setAvatarUrl(chessAvatarUrl);
+  }, [chessAvatarUrl, currentUser?.id, currentUser?.avatarUrl, setAvatarUrl]);
+
+  const displayAvatarUrl = isCustomAvatar(currentUser?.avatarUrl)
+    ? currentUser?.avatarUrl
+    : (chessAvatarUrl || currentUser?.avatarUrl || '/pnp_logo.jpeg');
+
+  const handleAvatarClick = () => {
+    if (isUploadingAvatar) return;
+    avatarInputRef.current?.click();
+  };
+
+  const handleAvatarFileChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+
+    setIsUploadingAvatar(true);
+    setError(null);
+    try {
+      await updateAvatar(file);
+      setMessage('Profile picture updated.');
+    } catch (avatarError) {
+      setError(avatarError instanceof Error ? avatarError.message : 'Could not update profile picture.');
+    } finally {
+      setIsUploadingAvatar(false);
+    }
+  };
+
+  const userGames = useMemo(() => profile?.games || [], [profile?.games]);
+
+  const getIsUserWhite = (game: any) => {
+    if (!profile?.username) return true;
+    return game.white?.name?.trim().toLowerCase() === profile.username.trim().toLowerCase();
+  };
+
+  const getUserRating = (game: any) => {
+    return getIsUserWhite(game) ? game.white?.rating : game.black?.rating;
+  };
+
+  const getOpponentRating = (game: any) => {
+    return getIsUserWhite(game) ? game.black?.rating : game.white?.rating;
+  };
+
+  const getOpponentName = (game: any) => {
+    const opponent = getIsUserWhite(game) ? game.black?.name : game.white?.name;
+    if (!opponent || opponent === 'Unknown') return 'Opponent';
+    return opponent;
+  };
+
+  const getGameResult = (game: any) => {
+    if (game.result === '1/2-1/2') return 'Draw';
+
+    const userWhite = getIsUserWhite(game);
+    const isWin = (userWhite && game.result === '1-0') || (!userWhite && game.result === '0-1');
+    return isWin ? 'Win' : 'Loss';
+  };
+
+  const wins = userGames.filter(game => getGameResult(game) === 'Win').length;
+  const draws = userGames.filter(game => getGameResult(game) === 'Draw').length;
+  const losses = userGames.filter(game => getGameResult(game) === 'Loss').length;
+  const opponentRatings = userGames.map(getOpponentRating).filter((rating): rating is number => typeof rating === 'number');
+
+  const classifyTimeControl = (timeControl?: string): 'bullet' | 'rapid' | 'other' => {
+    if (!timeControl) return 'other';
+    const normalized = timeControl.toLowerCase();
+    if (normalized.includes('bullet')) return 'bullet';
+    if (normalized.includes('rapid')) return 'rapid';
+
+    const plusMatch = normalized.match(/(\d+)\+(\d+)/);
+    const baseMatch = normalized.match(/^(\d+)$/);
+    const baseSeconds = plusMatch
+      ? parseInt(plusMatch[1], 10)
+      : baseMatch
+        ? parseInt(baseMatch[1], 10)
+        : null;
+
+    if (baseSeconds === null || Number.isNaN(baseSeconds)) return 'other';
+    if (baseSeconds < 180) return 'bullet';
+    if (baseSeconds >= 600) return 'rapid';
+    return 'other';
+  };
+
+  const currentRapidRating = userGames
+    .find((game) => classifyTimeControl(game.timeControl) === 'rapid' && typeof getUserRating(game) === 'number');
+  const currentBulletRating = userGames
+    .find((game) => classifyTimeControl(game.timeControl) === 'bullet' && typeof getUserRating(game) === 'number');
+
+  const gameStats = {
+    wins,
+    draws,
+    losses,
+    rapidRating: currentRapidRating ? getUserRating(currentRapidRating) ?? null : null,
+    bulletRating: currentBulletRating ? getUserRating(currentBulletRating) ?? null : null,
+    averageOpponentRating: opponentRatings.length
+      ? Math.round(opponentRatings.reduce((sum, rating) => sum + rating, 0) / opponentRatings.length)
+      : null,
+    winRate: userGames.length ? Math.round((wins / userGames.length) * 100) : 0,
+  };
 
   const stats = [
     {
-      title: "Games Analyzed",
-      value: profile?.analyzedGameIds.length.toString() || "0",
-      change: profile?.lastAnalyzedAt ? `Updated ${new Date(profile.lastAnalyzedAt).toLocaleDateString()}` : "Set up your profile",
-      icon: <BarChart3 className="w-5 h-5" />,
-      color: "text-blue-600"
+      title: 'Games Tracked',
+      value: userGames.length.toString(),
+      change: profile?.lastCheckedAt ? `Synced ${new Date(profile.lastCheckedAt).toLocaleDateString()}` : 'Add your chess username',
+      icon: <Gamepad2 className="w-5 h-5" />,
+      color: 'text-primary-600 dark:text-primary-300'
     },
     {
-      title: "Average Accuracy",
-      value: averageAccuracy ? `${averageAccuracy}%` : "-",
-      change: "From cached report",
-      icon: <Target className="w-5 h-5" />,
-      color: "text-green-600"
-    },
-    {
-      title: "Weaknesses Found",
-      value: report?.recurringWeaknesses.length.toString() || "0",
-      change: report?.recurringWeaknesses[0]?.title || "From latest analysis",
-      icon: <AlertCircle className="w-5 h-5" />,
-      color: "text-red-600"
-    },
-    {
-      title: "Current Rating",
-      value: overallRating ? overallRating.toLocaleString() : "-",
-      change: profile?.username || "Chess username needed",
+      title: 'Current Rapid Rating',
+      value: gameStats.rapidRating ? gameStats.rapidRating.toLocaleString() : '-',
+      change: 'Most recent rapid game',
       icon: <TrendingUp className="w-5 h-5" />,
-      color: "text-orange-600"
+      color: 'text-emerald-600 dark:text-emerald-300'
+    },
+    {
+      title: 'Current Bullet Rating',
+      value: gameStats.bulletRating ? gameStats.bulletRating.toLocaleString() : '-',
+      change: 'Most recent bullet game',
+      icon: <Medal className="w-5 h-5" />,
+      color: 'text-amber-600 dark:text-amber-300'
+    },
+    {
+      title: 'Average Opponent Rating',
+      value: gameStats.averageOpponentRating ? gameStats.averageOpponentRating.toLocaleString() : '-',
+      change: 'Pulled directly from the game archives',
+      icon: <Hash className="w-5 h-5" />,
+      color: 'text-cyan-600 dark:text-cyan-300'
     }
   ];
 
@@ -135,8 +276,8 @@ const DashboardPage: React.FC = () => {
       const result = await profileAnalysisService.refreshProfile(currentUser.id);
       setProfile(result.profile);
       setMessage(result.reusedCache
-        ? 'No new games found. Your saved analysis is already current.'
-        : `Found and analyzed ${result.newGamesCount} new game${result.newGamesCount === 1 ? '' : 's'}.`
+        ? 'No new games found. Your chess profile is already current.'
+        : `Synced ${result.newGamesCount} new game${result.newGamesCount === 1 ? '' : 's'} from the chess API.`
       );
     } catch (refreshError) {
       setError(refreshError instanceof Error ? refreshError.message : 'Could not refresh analysis.');
@@ -145,233 +286,253 @@ const DashboardPage: React.FC = () => {
     }
   };
 
+  const DashboardSkeleton = () => (
+    <div className="mb-8 grid grid-cols-1 gap-6 lg:grid-cols-4">
+      {[...Array(4)].map((_, index) => (
+        <div key={index} className="surface-card p-5">
+          <Skeleton className="h-3 w-24" />
+          <Skeleton className="mt-4 h-8 w-20" />
+          <Skeleton className="mt-4 h-3 w-32" />
+        </div>
+      ))}
+    </div>
+  );
+
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      {/* Welcome Header */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">
-          Welcome back, {currentUser?.displayName}!
-        </h1>
-        <p className="text-gray-600 mt-2">
-          Here's your chess improvement dashboard
-        </p>
-      </div>
-
-      {isLoadingProfile && (
-        <Card className="mb-8 border-blue-200 bg-blue-50">
-          <CardContent className="flex items-center gap-3 p-5 text-blue-900">
-            <RefreshCw className="h-5 w-5 animate-spin" />
-            <div>
-              <p className="font-medium">Loading your chess analysis</p>
-              <p className="text-sm text-blue-700">We are preparing your saved game report and dashboard data.</p>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {!isLoadingProfile && (
-      <Card className="mb-8">
-        <CardHeader>
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-            <div>
-              <CardTitle>Player Analysis Profile</CardTitle>
-              <CardDescription>
-                {profile
-                  ? 'Reports, puzzles, and dashboard reuse this saved analysis.'
-                  : 'Your first report is not ready yet. Add your chess username to analyze your latest 20 games before the dashboard fills in.'}
-              </CardDescription>
-            </div>
-            <div className="flex flex-col gap-3 sm:flex-row">
+    <div className="section-shell space-y-12 py-10 sm:space-y-14 sm:py-12">
+      <section className="aurora-panel pb-2">
+        <div className="grid gap-10 lg:grid-cols-[1.5fr_auto] lg:items-center lg:gap-16">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-primary-700 dark:text-primary-300">Player cockpit</p>
+            <h1 className="mt-3 font-display text-3xl font-semibold leading-tight text-slate-900 sm:text-4xl dark:text-white">
+              {currentUser?.displayName}, your chess command center
+            </h1>
+            <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-700 sm:text-base dark:text-slate-300">
+              Track performance, sync game archives, and jump straight into training decisions without switching contexts.
+            </p>
+            <div className="mt-7 flex flex-wrap gap-3">
               {profile && (
-                <Button type="button" variant="outline" onClick={refreshAnalysis} disabled={isRefreshing}>
-                  <RefreshCw className={`w-4 h-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} />
-                  Refresh
+                <Button type="button" variant="outline" onClick={refreshAnalysis} disabled={isRefreshing} className="cursor-pointer border-primary-200/80 bg-white/70 text-slate-800 hover:bg-white dark:border-slate-600 dark:bg-slate-800/70 dark:text-slate-100 dark:hover:bg-slate-800">
+                  <RefreshCw className={`mr-2 h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+                  Refresh profile
                 </Button>
               )}
-              <Button
-                type="button"
-                onClick={() => setIsReportPopupOpen(true)}
-                disabled={isRefreshing}
-                className="bg-emerald-600 text-white hover:bg-emerald-700"
-              >
-                <FileText className="w-4 h-4 mr-2" />
-                {report ? 'Open PDF Viewer' : 'Open Report Form'}
+              <Button type="button" onClick={() => setIsReportPopupOpen(true)} disabled={isRefreshing} className="cursor-pointer bg-primary-600 text-white hover:bg-primary-700">
+                <FileText className="mr-2 h-4 w-4" />
+                {report ? 'Open report viewer' : 'Connect chess account'}
               </Button>
+            </div>
+            <p className="mt-4 text-sm text-slate-600 dark:text-slate-300">
+              {profile?.lastCheckedAt
+                ? `Last sync: ${new Date(profile.lastCheckedAt).toLocaleString()}`
+                : 'No sync yet.'}
+            </p>
+            {progress && (
+              <div className="mt-4 max-w-xl">
+                <div className="mb-2 flex items-center justify-between text-xs text-slate-600 dark:text-slate-300">
+                  <span>{progress.message}</span>
+                  <span>{progress.progress}%</span>
+                </div>
+                <div className="h-2 rounded-full bg-primary-100/80 dark:bg-slate-700">
+                  <div className="h-2 rounded-full bg-primary-600 transition-all" style={{ width: `${progress.progress}%` }} />
+                </div>
+              </div>
+            )}
+            {message && <p className="mt-4 text-sm text-emerald-700 dark:text-emerald-300">{message}</p>}
+            {error && (
+              <p className="mt-4 flex items-center text-sm text-red-700 dark:text-red-300">
+                <AlertCircle className="mr-2 h-4 w-4" />
+                {error}
+              </p>
+            )}
+          </div>
+          <div className="flex flex-col items-center gap-4 text-center lg:items-end lg:text-right">
+            <input
+              ref={avatarInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleAvatarFileChange}
+            />
+            <button
+              type="button"
+              onClick={handleAvatarClick}
+              disabled={isUploadingAvatar}
+              aria-label="Change profile picture"
+              className="group relative h-32 w-32 cursor-pointer overflow-hidden rounded-full border-4 border-white shadow-soft transition hover:scale-[1.02] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 disabled:cursor-wait sm:h-36 sm:w-36 dark:border-slate-700"
+            >
+              <img
+                src={displayAvatarUrl || '/pnp_logo.jpeg'}
+                alt="Player avatar"
+                className="h-full w-full object-cover"
+              />
+              <span className="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-slate-950/55 text-white opacity-0 transition group-hover:opacity-100 group-focus-visible:opacity-100">
+                <Camera className="h-5 w-5" />
+                <span className="text-xs font-medium">
+                  {isUploadingAvatar ? 'Updating…' : 'Change'}
+                </span>
+              </span>
+            </button>
+            <div className="text-sm leading-6 text-slate-700 dark:text-slate-300">
+              <span className="font-semibold text-slate-900 dark:text-white">{profile?.username || currentUser?.displayName}</span>
+              {profile ? ` · ${profile.platform}` : ''}
             </div>
           </div>
-        </CardHeader>
-        <CardContent>
-          {!profile && (
-            <div className="rounded-2xl border border-dashed border-emerald-200 bg-emerald-50 p-5 text-sm text-emerald-900">
-              Your report form now opens in the popup. Use the green button above to enter your chess account, choose game settings, and generate the report.
-            </div>
-          )}
+        </div>
+      </section>
 
-          {profile && (
-            <div className="flex flex-col gap-2 text-sm text-gray-700 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <span className="font-medium">{profile.username}</span> on {profile.platform}
-                <span className="text-gray-500"> | latest {profile.gameLimit} games tracked</span>
-              </div>
-              <div className="text-gray-500">
-                {profile.lastCheckedAt ? `Checked ${new Date(profile.lastCheckedAt).toLocaleString()}` : 'Not checked yet'}
-              </div>
+      {isLoadingProfile && (
+        <Card className="border-primary-200 bg-primary-50 dark:border-slate-700 dark:bg-slate-900/60">
+          <CardContent className="flex items-center gap-3 p-6 text-primary-900 dark:text-slate-100">
+            <RefreshCw className="h-5 w-5 animate-spin" />
+            <div>
+              <p className="font-medium">Loading your chess profile</p>
+              <p className="mt-1 text-sm text-primary-700 dark:text-slate-300">Syncing your full game history from supported APIs.</p>
             </div>
-          )}
-
-          {progress && (
-            <div className="mt-4">
-              <div className="mb-1 flex items-center justify-between text-sm">
-                <span>{progress.message}</span>
-                <span>{progress.progress}%</span>
-              </div>
-              <div className="h-2 rounded-full bg-gray-200">
-                <div className="h-2 rounded-full bg-primary-600" style={{ width: `${progress.progress}%` }} />
-              </div>
-            </div>
-          )}
-
-          {message && <p className="mt-3 text-sm text-green-700">{message}</p>}
-          {error && (
-            <p className="mt-3 flex items-center text-sm text-red-700">
-              <AlertCircle className="mr-2 h-4 w-4" />
-              {error}
-            </p>
-          )}
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
       )}
+      {isLoadingProfile && <DashboardSkeleton />}
 
-      {/* Stats Grid */}
-      {report && (
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+      <section className="aurora-panel border-t border-primary-200/60 pt-10 dark:border-slate-700/80">
+        <div className="grid gap-8 sm:grid-cols-2 xl:grid-cols-4 xl:gap-0">
         {stats.map((stat, index) => (
-          <Card key={index}>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-gray-600">
-                {stat.title}
-              </CardTitle>
-              <div className={stat.color}>
-                {stat.icon}
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-gray-900">{stat.value}</div>
-              <p className="text-xs text-green-600 mt-1">{stat.change}</p>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-      )}
-
-      {report && (
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-        {/* Recent Games */}
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle>Recent Games</CardTitle>
-                <CardDescription>Your latest analyzed games</CardDescription>
-              </div>
-              <Button size="sm" onClick={() => navigate('/analyze')}>
-                <Plus className="w-4 h-4 mr-2" />
-                Analyze New Game
-              </Button>
+          <div key={index} className="xl:border-r xl:border-primary-200/60 xl:px-6 xl:last:border-r-0 xl:first:pl-0 dark:xl:border-slate-700/80">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-xs uppercase tracking-[0.16em] text-primary-700 dark:text-primary-300">{stat.title}</p>
+              <div className={stat.color}>{stat.icon}</div>
             </div>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {latestGames.map((game: any) => {
-                const isUserWhite = profile?.username.toLowerCase() === game.white?.name?.toLowerCase();
-                const opponent = isUserWhite ? game.black?.name : game.white?.name;
-                const result = game.result === '1/2-1/2' ? 'Draw' : (isUserWhite && game.result === '1-0') || (!isUserWhite && game.result === '0-1') ? 'Win' : 'Loss';
+            <p className="mt-3 font-display text-3xl font-semibold text-slate-900 sm:text-4xl dark:text-white">{stat.value}</p>
+            <p className="mt-2 text-xs leading-5 text-slate-600 dark:text-slate-300">{stat.change}</p>
+          </div>
+        ))}
+        </div>
+      </section>
+
+      <section className="aurora-subtle border-t border-primary-200/60 pt-10 dark:border-slate-700/80">
+        <div className="mb-8">
+          <h2 className="font-display text-2xl font-semibold text-slate-900 dark:text-white">Game Record</h2>
+          <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-300">Wins, draws, and losses pulled directly from your chess game archives.</p>
+        </div>
+        <div className="grid grid-cols-1 gap-8 sm:grid-cols-3 sm:gap-10">
+          <div>
+            <p className="text-sm text-emerald-700 dark:text-emerald-300">Wins</p>
+            <p className="mt-2 font-display text-3xl font-semibold text-emerald-900 sm:text-4xl dark:text-emerald-200">{gameStats.wins}</p>
+          </div>
+          <div>
+            <p className="text-sm text-slate-600 dark:text-slate-300">Draws</p>
+            <p className="mt-2 font-display text-3xl font-semibold text-slate-900 sm:text-4xl dark:text-white">{gameStats.draws}</p>
+          </div>
+          <div>
+            <p className="text-sm text-rose-700 dark:text-rose-300">Losses</p>
+            <p className="mt-2 font-display text-3xl font-semibold text-rose-900 sm:text-4xl dark:text-rose-200">{gameStats.losses}</p>
+          </div>
+        </div>
+        <div className="mt-8 text-sm text-slate-700 dark:text-slate-300">
+          Win rate: <span className="font-semibold text-slate-900 dark:text-white">{gameStats.winRate}%</span>
+        </div>
+      </section>
+
+      <section className="border-t border-primary-200/60 pt-10 dark:border-slate-700/80">
+        <div className="mb-8">
+          <h2 className="font-display text-2xl font-semibold text-slate-900 dark:text-white">All Previous Games</h2>
+          <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-300">Recent games from your chess archive, newest first.</p>
+        </div>
+          {userGames.length === 0 ? (
+            <EmptyState
+              icon={SearchX}
+              title="No games synced yet"
+              description="Connect your chess username from the report form to pull your latest archive and unlock personalized insights."
+              className="border-dashed"
+              action={
+                <Button onClick={() => setIsReportPopupOpen(true)} className="cursor-pointer">
+                  Open Report Form
+                </Button>
+              }
+            />
+          ) : (
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 xl:grid-cols-3">
+              {userGames.map((game: any) => {
+                const result = getGameResult(game);
+                const opponent = getOpponentName(game);
+                const userRating = getUserRating(game);
+                const opponentRating = getOpponentRating(game);
+                const openingName = game.opening?.name && game.opening.name !== 'Unknown'
+                  ? game.opening.name
+                  : null;
+                const timeControl = game.timeControl && game.timeControl !== 'Unknown'
+                  ? game.timeControl
+                  : null;
+                const accentClass = result === 'Win'
+                  ? 'bg-emerald-500'
+                  : result === 'Loss'
+                    ? 'bg-rose-500'
+                    : 'bg-slate-400 dark:bg-slate-500';
+                const resultBadgeClass = result === 'Win'
+                  ? 'bg-emerald-50 text-emerald-800 ring-emerald-200/80 dark:bg-emerald-500/15 dark:text-emerald-300 dark:ring-emerald-500/30'
+                  : result === 'Loss'
+                    ? 'bg-rose-50 text-rose-800 ring-rose-200/80 dark:bg-rose-500/15 dark:text-rose-300 dark:ring-rose-500/30'
+                    : 'bg-slate-100 text-slate-700 ring-slate-200/80 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-600';
 
                 return (
-                <div key={game.id} className="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors">
-                  <div className="flex-1">
-                    <div className="flex items-center space-x-3">
-                      <div className={`w-3 h-3 rounded-full ${
-                        result === 'Win' ? 'bg-green-500' : 
-                        result === 'Loss' ? 'bg-red-500' : 'bg-gray-500'
-                      }`} />
+                  <button
+                    key={game.id}
+                    type="button"
+                    onClick={() => {
+                      persistSelectedGame(game as ChessGame);
+                      navigate(`/game/${encodeURIComponent(game.id)}`, { state: { game } });
+                    }}
+                    className="game-card flex h-full w-full cursor-pointer flex-col pl-6 text-left transition hover:-translate-y-0.5 hover:shadow-elevated focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+                  >
+                    <span className={`game-card-accent ${accentClass}`} aria-hidden />
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-slate-500 dark:text-slate-400">
+                          <span className="inline-flex items-center gap-1.5">
+                            <CalendarDays className="h-3.5 w-3.5 shrink-0" />
+                            {game.date}
+                          </span>
+                          {timeControl && (
+                            <span className="rounded-md bg-slate-100 px-2 py-0.5 font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                              {timeControl}
+                            </span>
+                          )}
+                        </div>
+                        <h3 className="mt-2 truncate font-display text-lg font-semibold text-slate-900 dark:text-white">
+                          vs {opponent}
+                        </h3>
+                      </div>
+                      <span className={`inline-flex shrink-0 items-center rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset ${resultBadgeClass}`}>
+                        {result}
+                      </span>
+                    </div>
+
+                    {openingName && (
+                      <p className="mt-1 truncate text-sm text-slate-600 dark:text-slate-300">
+                        {openingName}
+                      </p>
+                    )}
+
+                    <div className="mt-auto grid grid-cols-2 gap-4 border-t border-slate-100 pt-4 dark:border-slate-800">
                       <div>
-                        <p className="font-medium text-gray-900">vs {opponent}</p>
-                        <p className="text-sm text-gray-500">{game.opening?.name || 'Unknown opening'}</p>
+                        <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">You</p>
+                        <p className="mt-1 font-display text-base font-semibold tabular-nums text-slate-900 dark:text-white">
+                          {userRating ? userRating.toLocaleString() : '—'}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">Opp</p>
+                        <p className="mt-1 font-display text-base font-semibold tabular-nums text-slate-900 dark:text-white">
+                          {opponentRating ? opponentRating.toLocaleString() : '—'}
+                        </p>
                       </div>
                     </div>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm font-medium text-gray-900">{result}</p>
-                    <p className="text-xs text-gray-500">{game.date}</p>
-                  </div>
-                  <ArrowRight className="w-4 h-4 text-gray-400 ml-4" />
-                </div>
-              )})}
-              {latestGames.length === 0 && (
-                <div className="rounded-lg border border-dashed border-gray-300 p-4 text-sm text-gray-500">
-                  Save your username to fetch and analyze your latest games.
-                </div>
-              )}
+                  </button>
+                );
+              })}
             </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Main Improvement Areas</CardTitle>
-            <CardDescription>Actual recurring patterns from the saved analysis</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {report.recurringWeaknesses.slice(0, 3).map((weakness) => (
-                <div key={weakness.title} className="rounded-lg border border-gray-200 p-4">
-                  <div className="mb-2 flex items-center justify-between gap-3">
-                    <p className="font-medium text-gray-900">{weakness.title}</p>
-                    <span className="rounded-full bg-red-50 px-2 py-1 text-xs font-medium text-red-700">
-                      {weakness.frequency}x
-                    </span>
-                  </div>
-                  <p className="text-sm text-gray-600">{weakness.description}</p>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-      )}
-
-      {/* Playing Style Insight */}
-      {report && (
-      <div className="mt-8">
-        <Card>
-          <CardHeader>
-            <CardTitle>Your Analysis Summary</CardTitle>
-            <CardDescription>Based on analysis of your recent games</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div>
-              <h3 className="text-lg font-semibold text-gray-900">
-                {report.executiveSummary.strengthAreas[0] || 'Developing Player'}
-              </h3>
-              <p className="mt-2 text-gray-600">
-                {report.executiveSummary.keyInsights[0]}
-              </p>
-              <div className="mt-4 grid grid-cols-1 gap-3 text-sm md:grid-cols-2">
-                <div className="rounded-md bg-green-50 p-3 text-green-800">
-                  <span className="font-medium">Strengths: </span>
-                  {report.executiveSummary.strengthAreas.slice(0, 3).join(', ') || '-'}
-                </div>
-                <div className="rounded-md bg-orange-50 p-3 text-orange-800">
-                  <span className="font-medium">Focus: </span>
-                  {report.recurringWeaknesses.slice(0, 3).map(weakness => weakness.title).join(', ') || '-'}
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-      )}
+          )}
+      </section>
 
       <ReportPopup
         isOpen={isReportPopupOpen}

@@ -4,6 +4,7 @@ export interface User {
   displayName: string;
   role: 'child' | 'parent' | 'coach' | 'admin';
   isPremium: boolean;
+  avatarUrl?: string | null;
   createdAt: Date;
 }
 
