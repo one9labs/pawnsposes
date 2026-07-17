@@ -7,6 +7,12 @@ import { GameReportRequest, ReportGenerationProgress } from '../types/report';
 import { PlayerAnalysisProfile, ProfileRefreshResult } from '../types/profileAnalysis';
 
 const DEFAULT_GAME_LIMIT = 20;
+/** How many recent games to fetch on a normal Refresh (incremental sync). */
+const SYNC_BATCH_SIZE = 50;
+/** Soft cap so Firestore / localStorage stay healthy. */
+const MAX_STORED_GAMES = 2000;
+/** Hard cap enforced by gameImportService when allGames is false. */
+const MAX_IMPORT_COUNT = 500;
 
 class ProfileAnalysisService {
   private storageKey(userId: string) {
@@ -97,7 +103,13 @@ class ProfileAnalysisService {
     reportService.setProgressCallback(callback);
   }
 
-  async setupProfile(request: GameReportRequest & { userId: string }): Promise<ProfileRefreshResult> {
+  /**
+   * First-time profile setup (registration / connect account).
+   * Can optionally pull full history, then optionally generate a report.
+   */
+  async setupProfile(
+    request: GameReportRequest & { userId: string; generateReport?: boolean }
+  ): Promise<ProfileRefreshResult> {
     const profile: PlayerAnalysisProfile = {
       userId: request.userId,
       platform: request.platform,
@@ -112,95 +124,156 @@ class ProfileAnalysisService {
     };
 
     await this.saveProfile(profile);
-    return this.refreshProfile(request.userId, true, { allGames: request.allGames });
+
+    const synced = await this.syncProfileGames(request.userId, {
+      allGames: request.allGames,
+      replaceExisting: true,
+    });
+
+    if (request.generateReport === false) {
+      return synced;
+    }
+
+    return this.generateProfileReport(request.userId, {
+      gameCount: request.gameCount || DEFAULT_GAME_LIMIT,
+      rated: request.rated,
+    });
   }
 
-  async refreshProfile(
+  /**
+   * Dashboard "Refresh profile": pull only recent/new games. Never generates a report.
+   */
+  async refreshProfile(userId: string): Promise<ProfileRefreshResult> {
+    return this.syncProfileGames(userId);
+  }
+
+  /**
+   * Incremental (or full) game sync without touching the report.
+   */
+  async syncProfileGames(
     userId: string,
-    forceAnalyze = false,
-    options?: { allGames?: boolean }
+    options?: { allGames?: boolean; replaceExisting?: boolean }
   ): Promise<ProfileRefreshResult> {
     const profile = await this.loadProfile(userId);
     if (!profile) {
       throw new Error('Please add your chess username first.');
     }
 
+    const importCount = Math.min(
+      MAX_IMPORT_COUNT,
+      Math.max(SYNC_BATCH_SIZE, Math.min(profile.gameLimit || SYNC_BATCH_SIZE, MAX_IMPORT_COUNT))
+    );
+
     const latestGames = await gameImportService.importGames({
       platform: profile.platform,
       username: profile.username,
-      count: profile.gameLimit || DEFAULT_GAME_LIMIT,
+      count: options?.allGames ? undefined : importCount,
       rated: profile.rated,
-      allGames: options?.allGames
+      allGames: Boolean(options?.allGames),
     });
 
-    const knownGameIds = new Set(profile.analyzedGameIds);
-    const newGames = latestGames.games.filter(game => !knownGameIds.has(game.id));
+    const knownGameIds = new Set([
+      ...profile.games.map((game) => game.id),
+      ...profile.analyzedGameIds,
+    ]);
+    const newGames = latestGames.games.filter((game) => !knownGameIds.has(game.id));
+
+    const mergedGames = options?.replaceExisting
+      ? this.mergeGames([], latestGames.games, MAX_STORED_GAMES)
+      : this.mergeGames(profile.games, latestGames.games, MAX_STORED_GAMES);
 
     const nextProfile: PlayerAnalysisProfile = {
       ...profile,
-      games: this.mergeLatestGames(profile.games, latestGames.games, profile.gameLimit || DEFAULT_GAME_LIMIT),
-      lastCheckedAt: new Date().toISOString()
+      games: mergedGames,
+      lastCheckedAt: new Date().toISOString(),
     };
 
-    if (!forceAnalyze && profile.report && newGames.length === 0) {
-      await this.saveProfile(nextProfile);
-      return {
-        profile: nextProfile,
-        newGamesCount: 0,
-        reusedCache: true
-      };
-    }
+    await this.saveProfile(nextProfile);
 
-    const gamesToAnalyze = profile.report && newGames.length > 0 && !forceAnalyze
-      ? newGames
-      : latestGames.games;
+    return {
+      profile: nextProfile,
+      newGamesCount: options?.replaceExisting ? latestGames.games.length : newGames.length,
+      reusedCache: !options?.replaceExisting && newGames.length === 0,
+    };
+  }
+
+  /**
+   * Manual report generation only — uses games already on the profile
+   * (optionally after a light incremental sync first).
+   */
+  async generateProfileReport(
+    userId: string,
+    request?: Partial<Pick<GameReportRequest, 'gameCount' | 'rated'>>
+  ): Promise<ProfileRefreshResult> {
+    // Pick up any brand-new games before analyzing, without re-pulling full history.
+    const synced = await this.syncProfileGames(userId);
+    const profile = synced.profile;
+
+    const gameCount = Math.max(
+      1,
+      Math.min(request?.gameCount || profile.gameLimit || DEFAULT_GAME_LIMIT, profile.games.length || DEFAULT_GAME_LIMIT)
+    );
+
+    const gamesToAnalyze = profile.games.slice(0, gameCount);
+    if (gamesToAnalyze.length === 0) {
+      throw new Error('No games available to analyze. Refresh your profile first.');
+    }
 
     const report = await reportService.generateReportFromGamesWithUnifiedPrompts(
       {
         platform: profile.platform,
         username: profile.username,
         gameCount: gamesToAnalyze.length,
-        rated: profile.rated
+        rated: request?.rated ?? profile.rated,
       },
       gamesToAnalyze
     );
 
     const analyzedIds = new Set([
       ...profile.analyzedGameIds,
-      ...gamesToAnalyze.map(game => game.id)
+      ...gamesToAnalyze.map((game) => game.id),
     ]);
 
     const analyzedProfile: PlayerAnalysisProfile = {
-      ...nextProfile,
+      ...profile,
+      gameLimit: request?.gameCount || profile.gameLimit || DEFAULT_GAME_LIMIT,
+      rated: request?.rated ?? profile.rated,
       report: {
         ...report,
-        userId
+        userId,
       },
       analyzedGameIds: Array.from(analyzedIds),
-      lastAnalyzedAt: new Date().toISOString()
+      lastAnalyzedAt: new Date().toISOString(),
     };
 
     await this.saveProfile(analyzedProfile);
 
     return {
       profile: analyzedProfile,
-      newGamesCount: gamesToAnalyze.length,
-      reusedCache: false
+      newGamesCount: synced.newGamesCount,
+      reusedCache: false,
     };
   }
 
-  private mergeLatestGames(existingGames: ChessGame[], latestGames: ChessGame[], limit: number): ChessGame[] {
+  private mergeGames(existingGames: ChessGame[], incomingGames: ChessGame[], maxGames: number): ChessGame[] {
     const gamesById = new Map<string, ChessGame>();
 
-    [...latestGames, ...existingGames].forEach(game => {
+    // Incoming first so refreshed metadata wins.
+    [...incomingGames, ...existingGames].forEach((game) => {
       if (!gamesById.has(game.id)) {
         gamesById.set(game.id, game);
       }
     });
 
     return Array.from(gamesById.values())
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-      .slice(0, limit);
+      .sort((a, b) => this.gameTimestamp(b) - this.gameTimestamp(a))
+      .slice(0, maxGames);
+  }
+
+  private gameTimestamp(game: ChessGame): number {
+    const normalized = game.date?.includes('.') ? game.date.replace(/\./g, '-') : game.date;
+    const parsed = Date.parse(normalized || '');
+    return Number.isNaN(parsed) ? 0 : parsed;
   }
 }
 

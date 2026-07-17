@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { BarChart3, Download, FileText, Loader2, RefreshCw, Sparkles, X } from 'lucide-react';
 import { Button } from './ui/Button';
@@ -19,6 +19,23 @@ interface ReportPopupProps {
   error: string | null;
 }
 
+type CachedPdf = {
+  blob: Blob;
+  filename: string;
+  url: string;
+};
+
+/** Keep built PDFs across reopen so Download is instant the second time. */
+const pdfCache = new Map<string, CachedPdf>();
+
+function reportCacheKey(report: ChessReport): string {
+  const generatedAt =
+    report.generatedAt instanceof Date
+      ? report.generatedAt.toISOString()
+      : String(report.generatedAt);
+  return `${report.userId || ''}:${report.username}:${report.gameCount}:${generatedAt}`;
+}
+
 const ReportPopup: React.FC<ReportPopupProps> = ({
   isOpen,
   onClose,
@@ -31,8 +48,7 @@ const ReportPopup: React.FC<ReportPopupProps> = ({
   message,
   error,
 }) => {
-  const hiddenReportRef = useRef<HTMLDivElement>(null);
-  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const reportRef = useRef<HTMLDivElement>(null);
   const [pdfFilename, setPdfFilename] = useState<string>('chess-report.pdf');
   const [isBuildingPdf, setIsBuildingPdf] = useState(false);
   const [pdfError, setPdfError] = useState<string | null>(null);
@@ -45,22 +61,20 @@ const ReportPopup: React.FC<ReportPopupProps> = ({
   });
   const [isValidating, setIsValidating] = useState(false);
   const [validationResult, setValidationResult] = useState<boolean | null>(null);
+  const [cachedPdfUrl, setCachedPdfUrl] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isOpen) {
-      setPdfUrl(null);
-      setPdfFilename('chess-report.pdf');
       setPdfError(null);
       setIsBuildingPdf(false);
       setViewMode('viewer');
       setValidationResult(null);
       setIsValidating(false);
+      setCachedPdfUrl(null);
       return;
     }
 
     if (!report) {
-      setPdfUrl(null);
-      setPdfFilename('chess-report.pdf');
       setPdfError(null);
       setIsBuildingPdf(false);
       setViewMode('form');
@@ -72,15 +86,13 @@ const ReportPopup: React.FC<ReportPopupProps> = ({
       });
       setValidationResult(null);
       setIsValidating(false);
+      setCachedPdfUrl(null);
       return;
     }
 
-    let cancelled = false;
-    let objectUrl: string | null = null;
-    setPdfUrl(null);
-    setPdfFilename('chess-report.pdf');
+    // Instant open: show HTML report immediately. PDF is built only on Download.
     setPdfError(null);
-    setIsBuildingPdf(true);
+    setIsBuildingPdf(false);
     setViewMode('viewer');
     setFormData({
       platform: report.platform,
@@ -88,44 +100,15 @@ const ReportPopup: React.FC<ReportPopupProps> = ({
       gameCount: report.gameCount,
       rated: undefined,
     });
-    const timer = window.setTimeout(async () => {
-      const captureElement = hiddenReportRef.current;
-      if (!captureElement) {
-        if (!cancelled) {
-          setPdfError('The report preview is still loading. Try opening the viewer again.');
-          setIsBuildingPdf(false);
-        }
-        return;
-      }
 
-      try {
-        const result = await reportService.generateReportPdfBlob(captureElement, report);
-        if (cancelled) {
-          return;
-        }
-
-        objectUrl = URL.createObjectURL(result.blob);
-        setPdfUrl(objectUrl);
-        setPdfFilename(result.filename);
-      } catch (generationError) {
-        if (!cancelled) {
-          setPdfError(generationError instanceof Error ? generationError.message : 'Failed to generate the PDF viewer.');
-        }
-      } finally {
-        if (!cancelled) {
-          setIsBuildingPdf(false);
-        }
-      }
-    }, 150);
-
-    return () => {
-      cancelled = true;
-      window.clearTimeout(timer);
-
-      if (objectUrl) {
-        URL.revokeObjectURL(objectUrl);
-      }
-    };
+    const cached = pdfCache.get(reportCacheKey(report));
+    if (cached) {
+      setPdfFilename(cached.filename);
+      setCachedPdfUrl(cached.url);
+    } else {
+      setPdfFilename(`${report.username}-chess-report.pdf`);
+      setCachedPdfUrl(null);
+    }
   }, [isOpen, report, initialPlatform, initialUsername]);
 
   useEffect(() => {
@@ -147,21 +130,70 @@ const ReportPopup: React.FC<ReportPopupProps> = ({
     }
 
     if (report) {
-      return `PDF Viewer for ${report.username}`;
+      return `Report for ${report.username}`;
     }
 
     return 'Create Your Report';
   }, [report, viewMode]);
 
   const openNewReportForm = () => {
-    setPdfUrl(null);
-    setPdfFilename('chess-report.pdf');
     setPdfError(null);
     setIsBuildingPdf(false);
     setViewMode('form');
   };
 
   const showViewer = viewMode === 'viewer' && !!report;
+
+  const ensurePdf = useCallback(async (): Promise<CachedPdf> => {
+    if (!report) {
+      throw new Error('No report available to export.');
+    }
+
+    const key = reportCacheKey(report);
+    const existing = pdfCache.get(key);
+    if (existing) {
+      return existing;
+    }
+
+    const captureElement = reportRef.current;
+    if (!captureElement) {
+      throw new Error('The report is still loading. Try again in a moment.');
+    }
+
+    const result = await reportService.generateReportPdfBlob(captureElement, report);
+    const url = URL.createObjectURL(result.blob);
+    const cached: CachedPdf = {
+      blob: result.blob,
+      filename: result.filename,
+      url,
+    };
+    pdfCache.set(key, cached);
+    setPdfFilename(cached.filename);
+    setCachedPdfUrl(cached.url);
+    return cached;
+  }, [report]);
+
+  const handleDownloadPdf = async () => {
+    if (!report || isBuildingPdf) return;
+
+    setPdfError(null);
+    setIsBuildingPdf(true);
+    try {
+      const cached = await ensurePdf();
+      const anchor = document.createElement('a');
+      anchor.href = cached.url;
+      anchor.download = cached.filename;
+      anchor.click();
+    } catch (generationError) {
+      setPdfError(
+        generationError instanceof Error
+          ? generationError.message
+          : 'Failed to generate the PDF.'
+      );
+    } finally {
+      setIsBuildingPdf(false);
+    }
+  };
 
   const handleFormChange = (field: keyof GameReportRequest, value: GameReportRequest[keyof GameReportRequest]) => {
     setFormData((previous) => ({ ...previous, [field]: value }));
@@ -206,38 +238,43 @@ const ReportPopup: React.FC<ReportPopupProps> = ({
 
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-md">
-      <div className="relative w-full max-w-[96vw] overflow-hidden rounded-3xl bg-white shadow-2xl ring-1 ring-black/10">
-        <div className="flex items-center justify-between border-b border-slate-200 bg-gradient-to-r from-emerald-50 via-white to-emerald-50 px-5 py-4 sm:px-6">
+      <div className="relative flex max-h-[95vh] w-full max-w-[96vw] flex-col overflow-hidden rounded-3xl bg-white shadow-2xl ring-1 ring-black/10">
+        <div className="flex shrink-0 items-center justify-between border-b border-slate-200 bg-gradient-to-r from-emerald-50 via-white to-emerald-50 px-5 py-4 sm:px-6">
           <div className="min-w-0">
             <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.24em] text-emerald-700">
               <Sparkles className="h-4 w-4" />
-              Special Viewer
+              Report viewer
             </div>
             <h2 className="mt-1 truncate text-xl font-extrabold text-slate-900 sm:text-2xl">{previewTitle}</h2>
             <p className="mt-1 text-sm text-slate-600">
               {viewMode === 'form'
                 ? 'Generate a fresh report from this popup.'
-                : 'Your generated report is rendered here as a PDF preview.'}
+                : 'Report opens instantly · PDF is built only when you download.'}
             </p>
           </div>
 
           <div className="flex items-center gap-2 sm:gap-3">
-            {showViewer && pdfUrl && (
-              <a
-                href={pdfUrl}
-                download={pdfFilename}
-                className="inline-flex items-center rounded-full bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700"
+            {showViewer && (
+              <button
+                type="button"
+                onClick={handleDownloadPdf}
+                disabled={isBuildingPdf}
+                className="inline-flex cursor-pointer items-center rounded-full bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700 disabled:cursor-wait disabled:opacity-70"
               >
-                <Download className="mr-2 h-4 w-4" />
-                Download
-              </a>
+                {isBuildingPdf ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Download className="mr-2 h-4 w-4" />
+                )}
+                {isBuildingPdf ? 'Preparing PDF…' : cachedPdfUrl ? 'Download PDF' : 'Download PDF'}
+              </button>
             )}
 
             {report && (
               <button
                 type="button"
                 onClick={openNewReportForm}
-                className="inline-flex items-center rounded-full border border-emerald-200 bg-white px-4 py-2 text-sm font-semibold text-emerald-700 shadow-sm transition hover:bg-emerald-50"
+                className="inline-flex cursor-pointer items-center rounded-full border border-emerald-200 bg-white px-4 py-2 text-sm font-semibold text-emerald-700 shadow-sm transition hover:bg-emerald-50"
               >
                 <FileText className="mr-2 h-4 w-4" />
                 Generate new report
@@ -247,7 +284,7 @@ const ReportPopup: React.FC<ReportPopupProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="rounded-full p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
+              className="cursor-pointer rounded-full p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
               aria-label="Close report popup"
             >
               <X className="h-5 w-5" />
@@ -255,7 +292,7 @@ const ReportPopup: React.FC<ReportPopupProps> = ({
           </div>
         </div>
 
-        <div className="max-h-[calc(100vh-7rem)] overflow-y-auto bg-slate-50 p-4 sm:p-6">
+        <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 p-4 sm:p-6">
           {viewMode === 'form' || !report ? (
             <div className="mx-auto max-w-4xl overflow-hidden rounded-2xl bg-white shadow-xl ring-1 ring-black/5">
               <div className="flex items-center gap-2 border-b border-slate-200 px-4 py-3 text-sm font-semibold text-slate-900">
@@ -265,7 +302,7 @@ const ReportPopup: React.FC<ReportPopupProps> = ({
 
               <div className="space-y-5 p-5 sm:p-6">
                 <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">
-                  Enter your chess account details. The popup will stay open and switch to the PDF viewer as soon as the report is ready.
+                  Enter your chess account details. When the report is ready, it opens instantly in this viewer.
                 </div>
 
                 <div>
@@ -300,51 +337,58 @@ const ReportPopup: React.FC<ReportPopupProps> = ({
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 gap-3 md:grid-cols-[160px_1fr]">
-                  <input
-                    value={formData.username}
-                    onChange={(event) => handleFormChange('username', event.target.value)}
-                    placeholder="Enter your username"
-                    className="h-11 rounded-xl border border-slate-300 px-3 text-sm shadow-sm outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200"
-                    disabled={isRefreshing}
-                  />
-
-                  <button
-                    type="button"
-                    onClick={validateUsername}
-                    disabled={!formData.username || isValidating || isRefreshing}
-                    className="inline-flex h-11 items-center justify-center rounded-xl bg-primary-600 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-primary-700 disabled:cursor-not-allowed disabled:bg-gray-300"
-                  >
-                    {isValidating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
-                    Validate
-                  </button>
-                </div>
-
-                {validationResult !== null && (
-                  <div className={`rounded-2xl px-4 py-3 text-sm ${validationResult ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                    {validationResult ? `User found on ${formData.platform}` : `User not found on ${formData.platform}`}
+                <div>
+                  <label className="mb-2 block text-sm font-medium text-gray-700">
+                    Username
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={formData.username}
+                      onChange={(e) => handleFormChange('username', e.target.value)}
+                      placeholder="Enter chess username"
+                      className="flex-1 rounded-xl border border-slate-300 px-3 py-2 text-sm"
+                      disabled={isRefreshing}
+                    />
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={validateUsername}
+                      disabled={!formData.username || isValidating || isRefreshing}
+                      className="cursor-pointer"
+                    >
+                      {isValidating ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Validate'}
+                    </Button>
                   </div>
-                )}
+                  {validationResult === true && (
+                    <p className="mt-2 text-xs text-emerald-700">Username found.</p>
+                  )}
+                  {validationResult === false && (
+                    <p className="mt-2 text-xs text-rose-700">Username not found.</p>
+                  )}
+                </div>
 
                 <div>
                   <label className="mb-2 block text-sm font-medium text-gray-700">
-                    Number of Games to Analyze
+                    Games to analyze (1-100)
                   </label>
                   <input
                     type="number"
-                    min="1"
-                    max="100"
+                    min={1}
+                    max={100}
                     value={formData.gameCount}
                     onChange={(event) => handleFormChange('gameCount', parseInt(event.target.value, 10) || 1)}
-                    className="h-11 w-full rounded-xl border border-slate-300 px-3 text-sm shadow-sm outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200"
+                    className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm"
                     disabled={isRefreshing}
                   />
-                  <p className="mt-1 text-sm text-gray-500">Recommended: 20-50 games for comprehensive analysis</p>
+                  <p className="mt-2 text-xs text-slate-500">
+                    Recommended: 20–50 games · estimated ~{Math.ceil(estimatedTime / 60)} min
+                  </p>
                 </div>
 
                 <div>
                   <label className="mb-2 block text-sm font-medium text-gray-700">
-                    Game Type
+                    Game type
                   </label>
                   <select
                     value={formData.rated === undefined ? 'all' : formData.rated ? 'rated' : 'unrated'}
@@ -352,7 +396,7 @@ const ReportPopup: React.FC<ReportPopupProps> = ({
                       const value = event.target.value;
                       handleFormChange('rated', value === 'all' ? undefined : value === 'rated');
                     }}
-                    className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm shadow-sm outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200"
+                    className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 text-sm"
                     disabled={isRefreshing}
                   >
                     <option value="all">All Games</option>
@@ -361,22 +405,27 @@ const ReportPopup: React.FC<ReportPopupProps> = ({
                   </select>
                 </div>
 
-                <div className="rounded-2xl bg-primary-50 p-3 text-sm text-primary-700">
-                  <strong>Estimated Generation Time:</strong> {Math.ceil(estimatedTime / 60)} minutes
-                </div>
-
                 <Button
                   type="button"
                   onClick={generateReport}
                   disabled={isRefreshing || !formData.username.trim() || validationResult === false}
-                  className="w-full bg-emerald-600 text-white hover:bg-emerald-700"
+                  className="w-full cursor-pointer"
                 >
-                  {isRefreshing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
-                  Generate Report
+                  {isRefreshing ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Generating…
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="mr-2 h-4 w-4" />
+                      Generate report
+                    </>
+                  )}
                 </Button>
 
-                {progress && (
-                  <div className="space-y-2 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                {isRefreshing && progress && (
+                  <div className="space-y-2">
                     <div className="flex items-center justify-between text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
                       <span>{progress.message}</span>
                       <span>{progress.progress}%</span>
@@ -389,6 +438,7 @@ const ReportPopup: React.FC<ReportPopupProps> = ({
 
                 {message && <p className="rounded-2xl bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{message}</p>}
                 {error && <p className="rounded-2xl bg-rose-50 px-4 py-3 text-sm text-rose-800">{error}</p>}
+                {pdfError && <p className="rounded-2xl bg-rose-50 px-4 py-3 text-sm text-rose-800">{pdfError}</p>}
               </div>
             </div>
           ) : (
@@ -396,49 +446,30 @@ const ReportPopup: React.FC<ReportPopupProps> = ({
               <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
                 <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
                   <FileText className="h-4 w-4 text-emerald-600" />
-                  PDF Preview
+                  Report
                 </div>
                 <div className="text-xs font-medium text-slate-500">{pdfFilename}</div>
               </div>
 
-              <div className="bg-slate-100 p-3">
-                {isBuildingPdf && (
-                  <div className="flex min-h-[75vh] items-center justify-center rounded-2xl bg-white">
-                    <div className="text-center">
-                      <Loader2 className="mx-auto h-8 w-8 animate-spin text-emerald-600" />
-                      <p className="mt-3 text-sm font-medium text-slate-700">Building the PDF viewer...</p>
-                    </div>
-                  </div>
-                )}
-
+              <div className="bg-white p-3 sm:p-4">
                 {pdfError && (
-                  <div className="flex min-h-[75vh] items-center justify-center rounded-2xl bg-white p-6 text-center">
-                    <div>
-                      <p className="text-base font-semibold text-slate-900">Viewer error</p>
-                      <p className="mt-2 text-sm text-slate-600">{pdfError}</p>
-                    </div>
+                  <div className="mb-3 rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-800">
+                    {pdfError}
                   </div>
                 )}
-
-                {pdfUrl && !isBuildingPdf && !pdfError && (
-                  <iframe
-                    title="Chess report PDF viewer"
-                    src={pdfUrl}
-                    className="h-[78vh] w-full rounded-2xl border border-slate-200 bg-white"
-                  />
+                {isBuildingPdf && (
+                  <div className="mb-3 flex items-center gap-2 rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Building PDF for download…
+                  </div>
                 )}
+                <div ref={reportRef} className="report-viewer-root">
+                  <ReportDisplay report={report} />
+                </div>
               </div>
             </div>
           )}
         </div>
-
-        {report && (
-          <div className="pointer-events-none absolute -left-[10000px] top-0 w-[1120px] bg-white">
-            <div ref={hiddenReportRef}>
-              <ReportDisplay report={report} onBack={() => undefined} />
-            </div>
-          </div>
-        )}
       </div>
     </div>,
     document.body

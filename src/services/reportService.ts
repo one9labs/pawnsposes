@@ -598,10 +598,10 @@ ${report.improvementPlan.immediateActions.map(action => `- **${action.priority.t
         htmlElement.style.visibility = 'visible';
       });
 
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await new Promise(resolve => setTimeout(resolve, 100));
 
       const canvas = await html2canvas(reportElement, {
-        scale: 2,
+        scale: 1.25,
         useCORS: true,
         allowTaint: true,
         backgroundColor: '#ffffff',
@@ -617,20 +617,21 @@ ${report.improvementPlan.immediateActions.map(action => `- **${action.priority.t
       const pageHeight = 297;
       const imgHeight = (canvas.height * imgWidth) / canvas.width;
       const pdf = new jsPDF('p', 'mm', 'a4');
+      const imageData = canvas.toDataURL('image/jpeg', 0.82);
 
       if (imgHeight <= pageHeight) {
-        pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, imgWidth, imgHeight);
+        pdf.addImage(imageData, 'JPEG', 0, 0, imgWidth, imgHeight);
       } else {
         let heightLeft = imgHeight;
         let position = 0;
 
-        pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, position, imgWidth, imgHeight);
+        pdf.addImage(imageData, 'JPEG', 0, position, imgWidth, imgHeight);
         heightLeft -= pageHeight;
 
         while (heightLeft >= 0) {
           position = heightLeft - imgHeight;
           pdf.addPage();
-          pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, position, imgWidth, imgHeight);
+          pdf.addImage(imageData, 'JPEG', 0, position, imgWidth, imgHeight);
           heightLeft -= pageHeight;
         }
       }

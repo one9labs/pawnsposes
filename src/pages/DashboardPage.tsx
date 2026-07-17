@@ -41,6 +41,11 @@ const DashboardPage: React.FC = () => {
   const [isReportPopupOpen, setIsReportPopupOpen] = useState(false);
   const [chessAvatarUrl, setChessAvatarUrl] = useState<string | null>(null);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const [liveRatings, setLiveRatings] = useState<{
+    rapid: number | null;
+    bullet: number | null;
+    blitz: number | null;
+  }>({ rapid: null, bullet: null, blitz: null });
 
   useEffect(() => {
     let isMounted = true;
@@ -95,6 +100,63 @@ const DashboardPage: React.FC = () => {
     };
 
     loadChessAvatar();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [profile?.platform, profile?.username]);
+
+  // Pull live ratings from Chess.com / Lichess so "Current Rapid" is the real rating,
+  // not inferred from a misclassified time-control string in the archive.
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadLiveRatings = async () => {
+      if (!profile?.username) {
+        if (isMounted) setLiveRatings({ rapid: null, bullet: null, blitz: null });
+        return;
+      }
+
+      try {
+        if (profile.platform === 'chess.com') {
+          const response = await fetch(
+            `https://api.chess.com/pub/player/${encodeURIComponent(profile.username)}/stats`
+          );
+          if (!response.ok) {
+            if (isMounted) setLiveRatings({ rapid: null, bullet: null, blitz: null });
+            return;
+          }
+          const data = await response.json();
+          if (!isMounted) return;
+          setLiveRatings({
+            rapid: typeof data?.chess_rapid?.last?.rating === 'number' ? data.chess_rapid.last.rating : null,
+            bullet: typeof data?.chess_bullet?.last?.rating === 'number' ? data.chess_bullet.last.rating : null,
+            blitz: typeof data?.chess_blitz?.last?.rating === 'number' ? data.chess_blitz.last.rating : null,
+          });
+          return;
+        }
+
+        const response = await fetch(
+          `https://lichess.org/api/user/${encodeURIComponent(profile.username)}`
+        );
+        if (!response.ok) {
+          if (isMounted) setLiveRatings({ rapid: null, bullet: null, blitz: null });
+          return;
+        }
+        const data = await response.json();
+        if (!isMounted) return;
+        setLiveRatings({
+          rapid: typeof data?.perfs?.rapid?.rating === 'number' ? data.perfs.rapid.rating : null,
+          bullet: typeof data?.perfs?.bullet?.rating === 'number' ? data.perfs.bullet.rating : null,
+          blitz: typeof data?.perfs?.blitz?.rating === 'number' ? data.perfs.blitz.rating : null,
+        });
+      } catch (ratingsError) {
+        console.error('Could not load live ratings:', ratingsError);
+        if (isMounted) setLiveRatings({ rapid: null, bullet: null, blitz: null });
+      }
+    };
+
+    loadLiveRatings();
 
     return () => {
       isMounted = false;
@@ -169,37 +231,56 @@ const DashboardPage: React.FC = () => {
   const losses = userGames.filter(game => getGameResult(game) === 'Loss').length;
   const opponentRatings = userGames.map(getOpponentRating).filter((rating): rating is number => typeof rating === 'number');
 
-  const classifyTimeControl = (timeControl?: string): 'bullet' | 'rapid' | 'other' => {
+  const classifyTimeControl = (timeControl?: string): 'bullet' | 'blitz' | 'rapid' | 'other' => {
     if (!timeControl) return 'other';
-    const normalized = timeControl.toLowerCase();
+    const normalized = timeControl.toLowerCase().trim();
     if (normalized.includes('bullet')) return 'bullet';
+    if (normalized.includes('blitz')) return 'blitz';
     if (normalized.includes('rapid')) return 'rapid';
 
     const plusMatch = normalized.match(/(\d+)\+(\d+)/);
     const baseMatch = normalized.match(/^(\d+)$/);
-    const baseSeconds = plusMatch
-      ? parseInt(plusMatch[1], 10)
-      : baseMatch
-        ? parseInt(baseMatch[1], 10)
-        : null;
+    if (!plusMatch && !baseMatch) return 'other';
 
-    if (baseSeconds === null || Number.isNaN(baseSeconds)) return 'other';
-    if (baseSeconds < 180) return 'bullet';
-    if (baseSeconds >= 600) return 'rapid';
+    let base = plusMatch ? parseInt(plusMatch[1], 10) : parseInt(baseMatch![1], 10);
+    const increment = plusMatch ? parseInt(plusMatch[2], 10) : 0;
+    if (Number.isNaN(base)) return 'other';
+
+    // Archives store minutes after parseTime (e.g. 600+0 → "10+0").
+    // Raw API/PGN values can still be seconds (e.g. "600+0").
+    const baseMinutes = base >= 60 ? base / 60 : base;
+    const incrementSeconds = increment;
+    // Chess.com estimated duration: base + 40 × increment.
+    const estimatedMinutes = baseMinutes + (40 * incrementSeconds) / 60;
+
+    if (estimatedMinutes < 3) return 'bullet';
+    if (estimatedMinutes < 10) return 'blitz';
+    if (estimatedMinutes < 60) return 'rapid';
     return 'other';
   };
 
-  const currentRapidRating = userGames
-    .find((game) => classifyTimeControl(game.timeControl) === 'rapid' && typeof getUserRating(game) === 'number');
-  const currentBulletRating = userGames
-    .find((game) => classifyTimeControl(game.timeControl) === 'bullet' && typeof getUserRating(game) === 'number');
+  const gamesByNewest = useMemo(() => {
+    return [...userGames].sort((a, b) => {
+      const aTime = Date.parse(a.date) || 0;
+      const bTime = Date.parse(b.date) || 0;
+      return bTime - aTime;
+    });
+  }, [userGames]);
+
+  const ratingFromRecentGames = (kind: 'bullet' | 'blitz' | 'rapid') => {
+    const match = gamesByNewest.find(
+      (game) => classifyTimeControl(game.timeControl) === kind && typeof getUserRating(game) === 'number'
+    );
+    return match ? getUserRating(match) ?? null : null;
+  };
 
   const gameStats = {
     wins,
     draws,
     losses,
-    rapidRating: currentRapidRating ? getUserRating(currentRapidRating) ?? null : null,
-    bulletRating: currentBulletRating ? getUserRating(currentBulletRating) ?? null : null,
+    rapidRating: liveRatings.rapid ?? ratingFromRecentGames('rapid'),
+    bulletRating: liveRatings.bullet ?? ratingFromRecentGames('bullet'),
+    blitzRating: liveRatings.blitz ?? ratingFromRecentGames('blitz'),
     averageOpponentRating: opponentRatings.length
       ? Math.round(opponentRatings.reduce((sum, rating) => sum + rating, 0) / opponentRatings.length)
       : null,
@@ -217,14 +298,14 @@ const DashboardPage: React.FC = () => {
     {
       title: 'Current Rapid Rating',
       value: gameStats.rapidRating ? gameStats.rapidRating.toLocaleString() : '-',
-      change: 'Most recent rapid game',
+      change: liveRatings.rapid != null ? 'Live from your chess account' : 'Most recent rapid game',
       icon: <TrendingUp className="w-5 h-5" />,
       color: 'text-emerald-600 dark:text-emerald-300'
     },
     {
       title: 'Current Bullet Rating',
       value: gameStats.bulletRating ? gameStats.bulletRating.toLocaleString() : '-',
-      change: 'Most recent bullet game',
+      change: liveRatings.bullet != null ? 'Live from your chess account' : 'Most recent bullet game',
       icon: <Medal className="w-5 h-5" />,
       color: 'text-amber-600 dark:text-amber-300'
     },
@@ -247,17 +328,36 @@ const DashboardPage: React.FC = () => {
     profileAnalysisService.setProgressCallback(setProgress);
 
     try {
-      const result = await profileAnalysisService.setupProfile({
-        userId: currentUser.id,
-        platform: request.platform,
-        username: request.username.trim(),
-        gameCount: request.gameCount,
-        rated: request.rated
-      });
+      const username = request.username.trim();
+      const needsNewProfile =
+        !profile ||
+        profile.username.trim().toLowerCase() !== username.toLowerCase() ||
+        profile.platform !== request.platform;
+
+      const result = needsNewProfile
+        ? await profileAnalysisService.setupProfile({
+            userId: currentUser.id,
+            platform: request.platform,
+            username,
+            gameCount: request.gameCount,
+            rated: request.rated,
+            allGames: request.allGames,
+            generateReport: true,
+          })
+        : await profileAnalysisService.generateProfileReport(currentUser.id, {
+            gameCount: request.gameCount,
+            rated: request.rated,
+          });
+
       setProfile(result.profile);
-      setMessage(`Analyzed ${result.newGamesCount} games and saved your profile analysis.`);
+      setPlatform(result.profile.platform);
+      setUsername(result.profile.username);
+      setMessage(
+        `Report ready · analyzed ${result.profile.report?.gameCount ?? request.gameCount} games` +
+          (result.newGamesCount > 0 ? ` · synced ${result.newGamesCount} new game${result.newGamesCount === 1 ? '' : 's'}` : '')
+      );
     } catch (setupError) {
-      setError(setupError instanceof Error ? setupError.message : 'Could not set up profile analysis.');
+      setError(setupError instanceof Error ? setupError.message : 'Could not generate report.');
     } finally {
       setIsRefreshing(false);
     }
@@ -270,17 +370,17 @@ const DashboardPage: React.FC = () => {
     setError(null);
     setMessage(null);
     setProgress(null);
-    profileAnalysisService.setProgressCallback(setProgress);
 
     try {
       const result = await profileAnalysisService.refreshProfile(currentUser.id);
       setProfile(result.profile);
-      setMessage(result.reusedCache
-        ? 'No new games found. Your chess profile is already current.'
-        : `Synced ${result.newGamesCount} new game${result.newGamesCount === 1 ? '' : 's'} from the chess API.`
+      setMessage(
+        result.reusedCache || result.newGamesCount === 0
+          ? 'No new games found. Your archive is up to date.'
+          : `Synced ${result.newGamesCount} new game${result.newGamesCount === 1 ? '' : 's'}. Generate a report when you want an updated analysis.`
       );
     } catch (refreshError) {
-      setError(refreshError instanceof Error ? refreshError.message : 'Could not refresh analysis.');
+      setError(refreshError instanceof Error ? refreshError.message : 'Could not refresh games.');
     } finally {
       setIsRefreshing(false);
     }
@@ -314,12 +414,12 @@ const DashboardPage: React.FC = () => {
               {profile && (
                 <Button type="button" variant="outline" onClick={refreshAnalysis} disabled={isRefreshing} className="cursor-pointer border-primary-200/80 bg-white/70 text-slate-800 hover:bg-white dark:border-slate-600 dark:bg-slate-800/70 dark:text-slate-100 dark:hover:bg-slate-800">
                   <RefreshCw className={`mr-2 h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-                  Refresh profile
+                  Refresh games
                 </Button>
               )}
               <Button type="button" onClick={() => setIsReportPopupOpen(true)} disabled={isRefreshing} className="cursor-pointer bg-primary-600 text-white hover:bg-primary-700">
                 <FileText className="mr-2 h-4 w-4" />
-                {report ? 'Open report viewer' : 'Connect chess account'}
+                {report ? 'Open / update report' : 'Connect chess account'}
               </Button>
             </div>
             <p className="mt-4 text-sm text-slate-600 dark:text-slate-300">

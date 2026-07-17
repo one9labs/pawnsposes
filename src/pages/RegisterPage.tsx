@@ -97,7 +97,8 @@ const RegisterPage: React.FC = () => {
       platform: formData.chessPlatform,
       username: formData.chessUsername.trim(),
       gameCount: 20,
-      allGames: true
+      allGames: true,
+      generateReport: true,
     });
   };
 

@@ -1,6 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React from 'react';
 import { ChessReport } from '../types/report';
-import { reportService } from '../services/reportService';
 import PositionDisplay from './PositionDisplay';
 import { 
   User, 
@@ -10,12 +9,6 @@ import {
   AlertTriangle, 
   TrendingUp, 
   BookOpen,
-  Download,
-  Share2,
-  ChevronDown,
-  ChevronUp,
-  FileDown,
-  Loader2,
   BarChart3,
   Search,
   ExternalLink,
@@ -23,51 +16,10 @@ import {
 
 interface ReportDisplayProps {
   report: ChessReport;
-  onBack: () => void;
+  onBack?: () => void;
 }
 
-const ReportDisplay: React.FC<ReportDisplayProps> = ({ report, onBack }) => {
-  // Debug: Check if report has FEN positions
-  React.useEffect(() => {
-    console.log('=== REPORT DISPLAY DEBUG ===');
-    console.log('Report weaknesses count:', report.recurringWeaknesses.length);
-    
-    let totalExamplesInReport = 0;
-    let examplesWithFenInReport = 0;
-    
-    report.recurringWeaknesses.forEach((weakness, wIndex) => {
-      console.log(`Weakness ${wIndex + 1}: ${weakness.title}`);
-      weakness.examples.forEach((example, eIndex) => {
-        totalExamplesInReport++;
-        console.log(`  Example ${eIndex + 1}: Game ${example.gameId}, Move ${example.moveNumber}, FEN: ${example.fenPosition ? 'Present' : 'Missing'}`);
-        if (example.fenPosition) {
-          examplesWithFenInReport++;
-        }
-      });
-    });
-    
-    console.log(`Total examples in report: ${totalExamplesInReport}, With FEN: ${examplesWithFenInReport}`);
-  }, [report]);
-  const [showExportDropdown, setShowExportDropdown] = useState(false);
-  const [isExportingPDF, setIsExportingPDF] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
-  const reportRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setShowExportDropdown(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, []);
-
-
-
+const ReportDisplay: React.FC<ReportDisplayProps> = ({ report }) => {
   // Helper function to get game number and opponent name
   const getGameAndOpponentInfo = (gameId: string): string => {
     const game = report.rawGameData.find(g => g.id === gameId);
@@ -122,60 +74,6 @@ const ReportDisplay: React.FC<ReportDisplayProps> = ({ report, onBack }) => {
     const filledDots = '●'.repeat(rating);
     const emptyDots = '○'.repeat(10 - rating);
     return `${filledDots}${emptyDots}`;
-  };
-
-
-
-  const exportReportAsPDF = async () => {
-    if (!reportRef.current) return;
-    
-    setIsExportingPDF(true);
-    setShowExportDropdown(false);
-    
-    // Wait for the DOM to update
-    await new Promise(resolve => setTimeout(resolve, 300));
-    
-    try {
-      await reportService.exportReportAsPDF(reportRef.current, report);
-    } catch (error) {
-      console.error('Error exporting PDF:', error);
-      alert('Failed to export PDF. Please try again.');
-    } finally {
-      setIsExportingPDF(false);
-    }
-  };
-
-  const exportReportAsPrintPDF = async () => {
-    if (!reportRef.current) return;
-    
-    setIsExportingPDF(true);
-    setShowExportDropdown(false);
-    
-    // Wait for the DOM to update
-    await new Promise(resolve => setTimeout(resolve, 300));
-    
-    try {
-      await reportService.exportReportAsPrintPDF(reportRef.current, report);
-    } catch (error) {
-      console.error('Error exporting PDF:', error);
-      alert('Failed to export PDF. Please try again.');
-    } finally {
-      setIsExportingPDF(false);
-    }
-  };
-
-  const shareReport = () => {
-    if (navigator.share) {
-      navigator.share({
-        title: `Chess Report for ${report.username}`,
-        text: `Check out my chess performance analysis! Win rate: ${report.executiveSummary.winRate}%`,
-        url: window.location.href
-      });
-    } else {
-      // Fallback: copy to clipboard
-      navigator.clipboard.writeText(window.location.href);
-      alert('Report link copied to clipboard!');
-    }
   };
 
 
@@ -243,79 +141,6 @@ const ReportDisplay: React.FC<ReportDisplayProps> = ({ report, onBack }) => {
       </style>
       
       <div className="max-w-4xl mx-auto p-4">
-        {/* Print Button Container */}
-        <div className="flex justify-center mb-4 no-print">
-          <div className="flex space-x-3">
-            <button
-              onClick={onBack}
-              className="px-4 py-2 text-emerald-600 hover:text-emerald-800 font-medium"
-            >
-              ← Back to Generator
-            </button>
-            
-            <button
-              onClick={shareReport}
-              className="flex items-center space-x-2 px-4 py-2 bg-emerald-600 text-white rounded-md hover:bg-emerald-700 font-semibold"
-            >
-              <Share2 className="w-4 h-4" />
-              <span>Share</span>
-            </button>
-            
-            <div className="relative" ref={dropdownRef}>
-              <button
-                onClick={() => setShowExportDropdown(!showExportDropdown)}
-                className="flex items-center space-x-2 px-6 py-3 text-white font-semibold rounded-lg shadow-lg transition-all duration-300 min-w-[180px] justify-center"
-                style={{ 
-                  backgroundColor: '#065f46',
-                  boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)'
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.backgroundColor = '#047857';
-                  e.currentTarget.style.boxShadow = '0 7px 14px rgba(0,0,0,0.1)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.backgroundColor = '#065f46';
-                  e.currentTarget.style.boxShadow = '0 4px 6px rgba(0, 0, 0, 0.1)';
-                }}
-                disabled={isExportingPDF}
-              >
-                {isExportingPDF ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>Generating...</span>
-                  </>
-                ) : (
-                  <>
-                    <Download className="w-4 h-4" />
-                    <span>Download PDF</span>
-                  </>
-                )}
-              </button>
-              
-              {showExportDropdown && !isExportingPDF && (
-                <div className="absolute right-0 mt-2 w-56 bg-white rounded-md shadow-lg border border-gray-200 z-10">
-                  <div className="py-1">
-                    <button
-                      onClick={exportReportAsPDF}
-                      className="flex items-center space-x-2 w-full px-4 py-2 text-left text-gray-700 hover:bg-gray-100"
-                    >
-                      <FileDown className="w-4 h-4" />
-                      <span>PDF (Screenshot)</span>
-                    </button>
-                    <button
-                      onClick={exportReportAsPrintPDF}
-                      className="flex items-center space-x-2 w-full px-4 py-2 text-left text-gray-700 hover:bg-gray-100"
-                    >
-                      <FileDown className="w-4 h-4" />
-                      <span>PDF (Print Version)</span>
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-
         {/* Main Report Container */}
         <div 
           className="bg-white rounded-lg shadow-lg border-t-8 p-10" 
@@ -323,7 +148,6 @@ const ReportDisplay: React.FC<ReportDisplayProps> = ({ report, onBack }) => {
             borderTopColor: '#064e3b',
             boxShadow: '0 10px 30px rgba(0, 0, 0, 0.07)'
           }}
-          ref={reportRef}
         >
           {/* Header */}
           <header className="flex justify-between items-start pb-4 mb-6 border-b border-gray-200">
