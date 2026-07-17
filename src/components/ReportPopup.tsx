@@ -313,7 +313,7 @@ const ReportPopup: React.FC<ReportPopupProps> = ({
                     type="button"
                     onClick={validateUsername}
                     disabled={!formData.username || isValidating || isRefreshing}
-                    className="inline-flex h-11 items-center justify-center rounded-xl bg-blue-600 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-gray-300"
+                    className="inline-flex h-11 items-center justify-center rounded-xl bg-primary-600 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-primary-700 disabled:cursor-not-allowed disabled:bg-gray-300"
                   >
                     {isValidating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
                     Validate
@@ -361,7 +361,7 @@ const ReportPopup: React.FC<ReportPopupProps> = ({
                   </select>
                 </div>
 
-                <div className="rounded-2xl bg-blue-50 p-3 text-sm text-blue-700">
+                <div className="rounded-2xl bg-primary-50 p-3 text-sm text-primary-700">
                   <strong>Estimated Generation Time:</strong> {Math.ceil(estimatedTime / 60)} minutes
                 </div>
 

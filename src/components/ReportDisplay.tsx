@@ -355,8 +355,8 @@ const ReportDisplay: React.FC<ReportDisplayProps> = ({ report, onBack }) => {
                 <h4 className="font-bold text-sm text-green-800">Win Rate</h4>
                 <p className="text-2xl font-bold text-gray-700 mt-1">{report.executiveSummary.winRate}%</p>
               </div>
-              <div className="highlight-card bg-blue-50 border-blue-200">
-                <h4 className="font-bold text-sm text-blue-800">Average Accuracy</h4>
+              <div className="highlight-card bg-primary-50 border-primary-200">
+                <h4 className="font-bold text-sm text-primary-800">Average Accuracy</h4>
                 <p className="text-2xl font-bold text-gray-700 mt-1">{report.executiveSummary.averageAccuracy}%</p>
               </div>
               <div className="highlight-card bg-yellow-50 border-yellow-200">

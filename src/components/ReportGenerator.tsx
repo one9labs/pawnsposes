@@ -80,8 +80,8 @@ const ReportGenerator: React.FC<ReportGeneratorProps> = ({ onReportGenerated }) 
         <p className="text-gray-600">
           Get a comprehensive analysis of your recent games with personalized improvement recommendations.
         </p>
-        <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded-md">
-          <p className="text-sm text-blue-700">
+        <div className="mt-2 p-2 bg-primary-50 border border-primary-200 rounded-md">
+          <p className="text-sm text-primary-700">
             <strong>✨ Enhanced Analysis:</strong> Using unified prompts for better chess insights
           </p>
         </div>
@@ -131,13 +131,13 @@ const ReportGenerator: React.FC<ReportGeneratorProps> = ({ onReportGenerated }) 
               value={formData.username}
               onChange={(e) => handleInputChange('username', e.target.value)}
               placeholder="Enter your username"
-              className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="flex-1 px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
               disabled={isGenerating}
             />
             <button
               onClick={validateUsername}
               disabled={!formData.username || isValidating || isGenerating}
-              className="px-4 py-2 bg-blue-500 text-white rounded-md hover:bg-blue-600 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center space-x-2"
+              className="px-4 py-2 bg-primary-500 text-white rounded-md hover:bg-primary-600 disabled:bg-gray-300 disabled:cursor-not-allowed flex items-center space-x-2"
             >
               {isValidating ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
@@ -177,7 +177,7 @@ const ReportGenerator: React.FC<ReportGeneratorProps> = ({ onReportGenerated }) 
             max="100"
             value={formData.gameCount}
             onChange={(e) => handleInputChange('gameCount', parseInt(e.target.value))}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
             disabled={isGenerating}
           />
           <p className="text-sm text-gray-500 mt-1">
@@ -196,7 +196,7 @@ const ReportGenerator: React.FC<ReportGeneratorProps> = ({ onReportGenerated }) 
               const value = e.target.value;
               handleInputChange('rated', value === 'all' ? undefined : value === 'rated');
             }}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-primary-500"
             disabled={isGenerating}
           >
             <option value="all">All Games</option>
@@ -206,8 +206,8 @@ const ReportGenerator: React.FC<ReportGeneratorProps> = ({ onReportGenerated }) 
         </div>
 
         {/* Estimated Time */}
-        <div className="p-3 bg-blue-50 rounded-md">
-          <p className="text-sm text-blue-700">
+        <div className="p-3 bg-primary-50 rounded-md">
+          <p className="text-sm text-primary-700">
             <strong>Estimated Generation Time:</strong> {Math.ceil(estimatedTime / 60)} minutes
           </p>
         </div>
@@ -237,7 +237,7 @@ const ReportGenerator: React.FC<ReportGeneratorProps> = ({ onReportGenerated }) 
           </div>
           <div className="w-full bg-gray-200 rounded-full h-2">
             <div 
-              className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+              className="bg-primary-600 h-2 rounded-full transition-all duration-300"
               style={{ width: `${progress.progress}%` }}
             />
           </div>

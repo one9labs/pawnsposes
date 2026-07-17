@@ -3,9 +3,28 @@ module.exports = {
   content: [
     "./src/**/*.{js,jsx,ts,tsx}",
   ],
+  darkMode: 'class',
   theme: {
     extend: {
       colors: {
+        ink: {
+          950: '#091224',
+          900: '#0f172a',
+          700: '#334155',
+          500: '#64748b',
+          200: '#cbd5e1',
+          100: '#e2e8f0',
+          50: '#f8fafc',
+        },
+        accent: {
+          50: '#fffaf0',
+          100: '#feefc7',
+          200: '#fcd77f',
+          300: '#f9c84f',
+          400: '#f4b221',
+          500: '#d49514',
+          600: '#a97010',
+        },
         primary: {
           50: '#eef8f1',
           100: '#d7efe0',
@@ -43,6 +62,11 @@ module.exports = {
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', 'sans-serif'],
+        display: ['Space Grotesk', 'Inter', 'system-ui', 'sans-serif'],
+      },
+      boxShadow: {
+        soft: '0 8px 24px rgba(15, 23, 42, 0.08)',
+        elevated: '0 18px 48px rgba(15, 23, 42, 0.14)',
       },
     },
   },

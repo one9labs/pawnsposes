@@ -88,9 +88,9 @@ const OpponentAnalysisPopup: React.FC<OpponentAnalysisPopupProps> = ({
   return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-md">
       <div className="relative w-full max-w-3xl overflow-hidden rounded-3xl bg-white shadow-2xl ring-1 ring-black/10">
-        <div className="flex items-start justify-between border-b border-slate-200 bg-gradient-to-r from-sky-50 via-white to-emerald-50 px-5 py-4 sm:px-6">
+        <div className="flex items-start justify-between border-b border-slate-200 bg-gradient-to-r from-primary-50 via-white to-emerald-50 px-5 py-4 sm:px-6">
           <div>
-            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.24em] text-sky-700">
+            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.24em] text-primary-700">
               <Sparkles className="h-4 w-4" />
               Analyze Opponents
             </div>
@@ -178,14 +178,14 @@ const OpponentAnalysisPopup: React.FC<OpponentAnalysisPopupProps> = ({
               )}
 
               {progress && isAnalyzing && (
-                <div className="rounded-2xl border border-sky-100 bg-sky-50 p-4">
-                  <div className="mb-2 flex items-center justify-between text-sm font-medium text-sky-900">
+                <div className="rounded-2xl border border-primary-100 bg-primary-50 p-4">
+                  <div className="mb-2 flex items-center justify-between text-sm font-medium text-primary-900">
                     <span>{progress.message}</span>
                     <span>{progress.progress}%</span>
                   </div>
-                  <div className="h-2 overflow-hidden rounded-full bg-sky-100">
+                  <div className="h-2 overflow-hidden rounded-full bg-primary-100">
                     <div
-                      className="h-full rounded-full bg-sky-600 transition-all"
+                      className="h-full rounded-full bg-primary-600 transition-all"
                       style={{ width: `${progress.progress}%` }}
                     />
                   </div>

@@ -56,8 +56,8 @@ const ReportsPage: React.FC = () => {
         {/* Features Overview */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-12">
           <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-            <div className="flex items-center justify-center w-12 h-12 bg-blue-100 rounded-lg mb-4">
-              <TrendingUp className="w-6 h-6 text-blue-600" />
+            <div className="flex items-center justify-center w-12 h-12 bg-primary-100 rounded-lg mb-4">
+              <TrendingUp className="w-6 h-6 text-primary-600" />
             </div>
             <h3 className="text-lg font-semibold text-gray-900 mb-2">Executive Summary</h3>
             <p className="text-gray-600 text-sm">
@@ -89,8 +89,8 @@ const ReportsPage: React.FC = () => {
           </div>
 
           <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-200">
-            <div className="flex items-center justify-center w-12 h-12 bg-purple-100 rounded-lg mb-4">
-              <Lightbulb className="w-6 h-6 text-purple-600" />
+            <div className="flex items-center justify-center w-12 h-12 bg-gold-100 rounded-lg mb-4">
+              <Lightbulb className="w-6 h-6 text-gold-600" />
             </div>
             <h3 className="text-lg font-semibold text-gray-900 mb-2">Improvement Plan</h3>
             <p className="text-gray-600 text-sm">
@@ -105,8 +105,8 @@ const ReportsPage: React.FC = () => {
           <h2 className="text-2xl font-bold text-gray-900 mb-6 text-center">How It Works</h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             <div className="text-center">
-              <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <span className="text-2xl font-bold text-blue-600">1</span>
+              <div className="w-16 h-16 bg-primary-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <span className="text-2xl font-bold text-primary-600">1</span>
               </div>
               <h3 className="text-lg font-semibold text-gray-900 mb-2">Connect Your Account</h3>
               <p className="text-gray-600">
@@ -127,8 +127,8 @@ const ReportsPage: React.FC = () => {
             </div>
 
             <div className="text-center">
-              <div className="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <span className="text-2xl font-bold text-purple-600">3</span>
+              <div className="w-16 h-16 bg-gold-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <span className="text-2xl font-bold text-gold-600">3</span>
               </div>
               <h3 className="text-lg font-semibold text-gray-900 mb-2">Get Your Report</h3>
               <p className="text-gray-600">
@@ -140,7 +140,7 @@ const ReportsPage: React.FC = () => {
         </div>
 
         {/* Sample Report Info */}
-        <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg p-8 mb-12">
+        <div className="bg-gradient-to-r from-primary-50 to-gold-50 rounded-lg p-8 mb-12">
           <h2 className="text-2xl font-bold text-gray-900 mb-4 text-center">
             What's Included in Your Report
           </h2>
