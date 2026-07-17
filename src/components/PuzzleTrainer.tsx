@@ -2,9 +2,11 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Chess } from 'chess.js';
 import { Chessboard } from 'react-chessboard';
 import {
+  ArrowLeft,
   ArrowRight,
   BookOpen,
-  Brain,
+  Clock3,
+  ExternalLink,
   Eye,
   Flag,
   Lightbulb,
@@ -15,14 +17,25 @@ import {
   Trophy
 } from 'lucide-react';
 import { GameAnalysis } from '../types/analysis';
-import { LichessPuzzleResponse, PuzzleTrainingCategory, PuzzleTrainingConfig } from '../types/puzzle';
+import { ChessGame } from '../types/game';
+import {
+  PuzzleTrainingCategory,
+  PuzzleTrainingConfig,
+  TrainerPuzzle,
+  WeaknessMiningProgress
+} from '../types/puzzle';
 import { puzzleService } from '../services/puzzleService';
+import { classificationMeta, formatSeconds } from '../utils/gameReviewAnalysis';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/Card';
 import { Button } from './ui/Button';
 import { Badge } from './ui/Badge';
 
 interface PuzzleTrainerProps {
   analysis?: GameAnalysis | null;
+  platform?: 'lichess' | 'chess.com';
+  username?: string;
+  games?: ChessGame[];
+  rated?: boolean;
 }
 
 const trainingCategories: Array<{
@@ -34,14 +47,8 @@ const trainingCategories: Array<{
   {
     id: 'fix-weakness',
     title: 'Fix My Weaknesses',
-    description: 'Puzzles matched to the tactical pattern your analysis struggled with most.',
+    description: 'Replays critical moments from your last 20 games — long thinks and blunders.',
     icon: <ShieldAlert className="h-5 w-5" />
-  },
-  {
-    id: 'learn-mistakes',
-    title: 'Learn From My Mistakes',
-    description: 'Conversion and best-move puzzles that train sharper decisions after missed chances.',
-    icon: <Brain className="h-5 w-5" />
   },
   {
     id: 'master-opening',
@@ -57,11 +64,19 @@ const trainingCategories: Array<{
   }
 ];
 
-const PuzzleTrainer: React.FC<PuzzleTrainerProps> = ({ analysis }) => {
+const PuzzleTrainer: React.FC<PuzzleTrainerProps> = ({
+  analysis,
+  platform,
+  username,
+  games,
+  rated
+}) => {
   const chessRef = useRef(new Chess());
+  const sessionRef = useRef<HTMLDivElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<PuzzleTrainingCategory | null>(null);
   const [trainingConfig, setTrainingConfig] = useState<PuzzleTrainingConfig | null>(null);
-  const [currentPuzzle, setCurrentPuzzle] = useState<LichessPuzzleResponse | null>(null);
+  const [currentPuzzle, setCurrentPuzzle] = useState<TrainerPuzzle | null>(null);
   const [solutionIndex, setSolutionIndex] = useState(0);
   const [fen, setFen] = useState(chessRef.current.fen());
   const [status, setStatus] = useState('Choose a training target to begin.');
@@ -72,12 +87,15 @@ const PuzzleTrainer: React.FC<PuzzleTrainerProps> = ({ analysis }) => {
   const [boardOrientation, setBoardOrientation] = useState<'white' | 'black'>('white');
   const [showHint, setShowHint] = useState(false);
   const [isSolved, setIsSolved] = useState(false);
+  const [miningProgress, setMiningProgress] = useState<WeaknessMiningProgress | null>(null);
 
   const activeCategory = useMemo(
     () => trainingCategories.find(category => category.id === selectedCategory),
     [selectedCategory]
   );
   const sideToMove = fen.split(' ')[1] === 'b' ? 'Black' : 'White';
+  const isWeaknessMode = selectedCategory === 'fix-weakness';
+  const weakness = currentPuzzle?.weakness;
 
   useEffect(() => {
     if (!selectedCategory) return;
@@ -85,43 +103,95 @@ const PuzzleTrainer: React.FC<PuzzleTrainerProps> = ({ analysis }) => {
     const config = puzzleService.buildTrainingConfig(selectedCategory, analysis);
     setTrainingConfig(config);
     loadPuzzle(config);
+
+    return () => {
+      abortRef.current?.abort();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedCategory, analysis]);
+  }, [selectedCategory, analysis, platform, username]);
+
+  useEffect(() => {
+    if (!selectedCategory || !sessionRef.current) return;
+
+    sessionRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, [selectedCategory]);
 
   const loadPuzzle = async (config = trainingConfig) => {
     if (!config) return;
+
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
 
     setIsLoading(true);
     setError(null);
     setShowHint(false);
     setIsSolved(false);
-    setStatus('Loading a Lichess puzzle...');
+    setMiningProgress(null);
+    setStatus(
+      config.category === 'fix-weakness'
+        ? 'Mining weakness positions from your recent games…'
+        : 'Loading a Lichess puzzle...'
+    );
 
     try {
-      const puzzle = await puzzleService.getNextPuzzle(config);
+      const puzzle = await puzzleService.getNextPuzzle(config, {
+        analysis,
+        platform,
+        username,
+        games,
+        rated,
+        signal: controller.signal,
+        onWeaknessProgress: progress => {
+          if (controller.signal.aborted) return;
+          setMiningProgress(progress);
+          setStatus(progress.message);
+        }
+      });
+
+      if (controller.signal.aborted) return;
+
       preparePuzzle(puzzle);
       setCurrentPuzzle(puzzle);
-      setStatus('Find the best move.');
+      setMiningProgress(null);
+      setStatus(
+        puzzle.weakness
+          ? 'Find the move you missed in this game.'
+          : 'Find the best move.'
+      );
     } catch (loadError) {
+      if (controller.signal.aborted) return;
       const message = loadError instanceof Error ? loadError.message : 'Could not load a puzzle.';
       setError(message);
       setStatus('Puzzle loading failed.');
+      setMiningProgress(null);
     } finally {
-      setIsLoading(false);
+      if (!controller.signal.aborted) {
+        setIsLoading(false);
+      }
     }
   };
 
-  const preparePuzzle = (puzzle: LichessPuzzleResponse) => {
+  const preparePuzzle = (puzzle: TrainerPuzzle) => {
     const puzzleGame = new Chess();
-    puzzleGame.loadPgn(puzzle.game.pgn);
+
+    if (puzzle.lichessPgn) {
+      puzzleGame.loadPgn(puzzle.lichessPgn);
+    } else if (puzzle.fen) {
+      puzzleGame.load(puzzle.fen);
+    } else {
+      throw new Error('Puzzle is missing a starting position.');
+    }
 
     chessRef.current = puzzleGame;
     setSolutionIndex(0);
     setFen(puzzleGame.fen());
-    setBoardOrientation(puzzleGame.turn() === 'w' ? 'white' : 'black');
+    setBoardOrientation(
+      puzzle.weakness?.playerColor || (puzzleGame.turn() === 'w' ? 'white' : 'black')
+    );
   };
 
-  const getExpectedMove = () => currentPuzzle?.puzzle.solution[solutionIndex];
+  const getExpectedMove = () => currentPuzzle?.solution[solutionIndex];
 
   const getMoveFromUci = (uciMove: string) => ({
     from: uciMove.slice(0, 2),
@@ -149,7 +219,11 @@ const PuzzleTrainer: React.FC<PuzzleTrainerProps> = ({ analysis }) => {
     setIsSolved(true);
     setSolved(prev => prev + 1);
     setStreak(prev => prev + 1);
-    setStatus('Solved. Nice calculation.');
+    setStatus(
+      weakness
+        ? `Solved. In the game you played ${weakness.playedMoveSan}.`
+        : 'Solved. Nice calculation.'
+    );
   };
 
   const handlePieceDrop = ({ sourceSquare, targetSquare }: { sourceSquare: string; targetSquare: string | null }) => {
@@ -160,7 +234,7 @@ const PuzzleTrainer: React.FC<PuzzleTrainerProps> = ({ analysis }) => {
     }
 
     if (!isLegalUciMove(chessRef.current, expectedMove)) {
-      setError('This puzzle position did not match the Lichess solution. Please load the next puzzle.');
+      setError('This puzzle position did not match the expected solution. Please load the next puzzle.');
       return false;
     }
 
@@ -168,7 +242,11 @@ const PuzzleTrainer: React.FC<PuzzleTrainerProps> = ({ analysis }) => {
 
     if (candidateMove !== expectedMove) {
       setStreak(0);
-      setStatus('Not quite. Reset your candidate and look for the forcing move.');
+      setStatus(
+        weakness
+          ? `Not quite. In the game you played ${weakness.playedMoveSan} — look for a stronger idea.`
+          : 'Not quite. Reset your candidate and look for the forcing move.'
+      );
       return false;
     }
 
@@ -176,19 +254,19 @@ const PuzzleTrainer: React.FC<PuzzleTrainerProps> = ({ analysis }) => {
       playUciMove(expectedMove);
       let nextIndex = solutionIndex + 1;
 
-      if (nextIndex >= currentPuzzle.puzzle.solution.length) {
+      if (nextIndex >= currentPuzzle.solution.length) {
         setFen(chessRef.current.fen());
         finishPuzzle();
         return true;
       }
 
-      playUciMove(currentPuzzle.puzzle.solution[nextIndex]);
+      playUciMove(currentPuzzle.solution[nextIndex]);
       nextIndex += 1;
 
       setSolutionIndex(nextIndex);
       setFen(chessRef.current.fen());
 
-      if (nextIndex >= currentPuzzle.puzzle.solution.length) {
+      if (nextIndex >= currentPuzzle.solution.length) {
         finishPuzzle();
       } else {
         setStatus('Correct. Continue the line.');
@@ -205,7 +283,7 @@ const PuzzleTrainer: React.FC<PuzzleTrainerProps> = ({ analysis }) => {
     if (!currentPuzzle) return;
     setShowHint(false);
     setIsSolved(false);
-    setStatus('Find the best move.');
+    setStatus(weakness ? 'Find the move you missed in this game.' : 'Find the best move.');
     preparePuzzle(currentPuzzle);
   };
 
@@ -214,8 +292,8 @@ const PuzzleTrainer: React.FC<PuzzleTrainerProps> = ({ analysis }) => {
 
     try {
       let nextIndex = solutionIndex;
-      while (nextIndex < currentPuzzle.puzzle.solution.length) {
-        const move = currentPuzzle.puzzle.solution[nextIndex];
+      while (nextIndex < currentPuzzle.solution.length) {
+        const move = currentPuzzle.solution[nextIndex];
         playUciMove(move);
         nextIndex += 1;
       }
@@ -223,191 +301,361 @@ const PuzzleTrainer: React.FC<PuzzleTrainerProps> = ({ analysis }) => {
       setFen(chessRef.current.fen());
       setStreak(0);
       setIsSolved(true);
-      setStatus('Solution shown. Try the next puzzle fresh.');
+      setStatus(
+        weakness
+          ? `Solution shown. You played ${weakness.playedMoveSan} in the game.`
+          : 'Solution shown. Try the next puzzle fresh.'
+      );
     } catch (solutionError) {
       setError(solutionError instanceof Error ? solutionError.message : 'Could not show the solution.');
     }
   };
 
-  const expectedMove = getExpectedMove();
+  const clearSelection = () => {
+    abortRef.current?.abort();
+    setSelectedCategory(null);
+    setTrainingConfig(null);
+    setCurrentPuzzle(null);
+    setError(null);
+    setShowHint(false);
+    setIsSolved(false);
+    setMiningProgress(null);
+    setStatus('Choose a training target to begin.');
+  };
 
-  return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+  const expectedMove = getExpectedMove();
+  const miningPercent = miningProgress
+    ? miningProgress.phase === 'loading-games'
+      ? 8
+      : miningProgress.candidatesTotal > 0
+        ? Math.round((miningProgress.candidatesDone / miningProgress.candidatesTotal) * 100)
+        : 15
+    : 0;
+
+  if (!selectedCategory) {
+    return (
+      <div className="grid gap-3 sm:grid-cols-3">
         {trainingCategories.map(category => {
           const config = puzzleService.buildTrainingConfig(category.id, analysis);
-          const isActive = selectedCategory === category.id;
+          const needsAccount = category.id === 'fix-weakness' && (!platform || !username);
 
           return (
             <button
               key={category.id}
               type="button"
               onClick={() => setSelectedCategory(category.id)}
-              className={`text-left rounded-lg border p-4 transition-colors ${
-                isActive
-                  ? 'border-primary-500 bg-primary-50'
-                  : 'border-gray-200 bg-white hover:border-primary-300 hover:bg-gray-50'
-              }`}
+              className="cursor-pointer rounded-2xl border border-primary-200/70 bg-white/70 p-4 text-left transition hover:border-primary-400 hover:bg-primary-50/70 dark:border-slate-700 dark:bg-slate-900/60 dark:hover:border-primary-500/50 dark:hover:bg-slate-800/70"
             >
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-md bg-gray-900 text-white">
-                  {category.icon}
-                </div>
-                <Badge variant="outline" className="capitalize">
-                  {config.difficulty}
-                </Badge>
+              <div className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-primary-100 text-primary-700 dark:bg-primary-500/15 dark:text-primary-300">
+                {category.icon}
               </div>
-              <h3 className="mt-4 text-base font-semibold text-gray-900">{category.title}</h3>
-              <p className="mt-2 text-sm leading-5 text-gray-600">{category.description}</p>
-              <div className="mt-3 text-xs font-medium uppercase tracking-wide text-gray-500">
-                Lichess theme: {config.angle}
+              <h3 className="mt-3 font-display text-base font-semibold text-slate-900 dark:text-white">
+                {category.title}
+              </h3>
+              <p className="mt-1 text-sm leading-5 text-slate-600 dark:text-slate-300">
+                {category.description}
+              </p>
+              <div className="mt-3 flex items-center justify-between gap-2">
+                <span className="text-xs font-medium uppercase tracking-wide text-primary-700 dark:text-primary-300">
+                  {config.angle}
+                </span>
+                <Badge variant="outline" className="h-fit w-fit capitalize border-primary-200 text-primary-700 dark:border-slate-600 dark:text-primary-300">
+                  {needsAccount ? 'account needed' : config.difficulty}
+                </Badge>
               </div>
             </button>
           );
         })}
       </div>
+    );
+  }
 
-      {selectedCategory && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2">
-            <Card>
-              <CardHeader>
-                <div className="flex items-center justify-between gap-4">
-                  <CardTitle className="flex items-center gap-2 text-xl">
-                    <Target className="h-5 w-5" />
-                    {activeCategory?.title}
-                  </CardTitle>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setBoardOrientation(boardOrientation === 'white' ? 'black' : 'white')}
-                  >
-                    <RotateCcw className="h-4 w-4" />
-                  </Button>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <div className="mx-auto aspect-square max-w-xl">
-                  <Chessboard
-                    options={{
-                      position: fen,
-                      boardOrientation,
-                      allowDragging: !!currentPuzzle && !isSolved && !isLoading,
-                      onPieceDrop: handlePieceDrop,
-                      boardStyle: {
-                        borderRadius: '4px',
-                        boxShadow: '0 2px 10px rgba(0, 0, 0, 0.35)'
-                      }
-                    }}
-                  />
-                </div>
-              </CardContent>
-            </Card>
-          </div>
+  return (
+    <div ref={sessionRef} className="scroll-mt-24 space-y-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <Button type="button" variant="outline" size="sm" onClick={clearSelection} className="cursor-pointer">
+          <ArrowLeft className="mr-2 h-4 w-4" />
+          Change training
+        </Button>
+        <div className="text-sm text-slate-600 dark:text-slate-300">
+          <span className="font-medium text-slate-900 dark:text-white">{activeCategory?.title}</span>
+          {trainingConfig && (
+            <span className="ml-2 text-primary-700 dark:text-primary-300">
+              · {trainingConfig.angle}
+              {!isWeaknessMode && ` · ${trainingConfig.difficulty}`}
+            </span>
+          )}
+        </div>
+      </div>
 
-          <div className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Puzzle Session</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="rounded-md border border-gray-200 p-3">
-                    <div className="text-xs text-gray-500">Streak</div>
-                    <div className="text-2xl font-bold">{streak}</div>
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <div className="lg:col-span-2">
+          <Card className="aurora-subtle">
+            <CardHeader>
+              <div className="flex items-center justify-between gap-4">
+                <CardTitle className="flex items-center gap-2 font-display text-xl">
+                  <Target className="h-5 w-5" />
+                  {activeCategory?.title}
+                </CardTitle>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setBoardOrientation(boardOrientation === 'white' ? 'black' : 'white')}
+                >
+                  <RotateCcw className="h-4 w-4" />
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="mx-auto aspect-square max-w-xl">
+                <Chessboard
+                  options={{
+                    position: fen,
+                    boardOrientation,
+                    allowDragging: !!currentPuzzle && !isSolved && !isLoading,
+                    onPieceDrop: handlePieceDrop,
+                    boardStyle: {
+                      borderRadius: '14px',
+                      boxShadow: '0 18px 48px rgba(15, 23, 42, 0.24)'
+                    }
+                  }}
+                />
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="space-y-4">
+          <Card className="aurora-subtle">
+            <CardHeader>
+              <CardTitle className="font-display text-lg">Puzzle Session</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="rounded-xl bg-primary-50 p-3 dark:bg-primary-500/10">
+                  <div className="text-xs text-primary-700 dark:text-primary-300">Streak</div>
+                  <div className="font-display text-2xl font-semibold text-slate-900 dark:text-white">{streak}</div>
+                </div>
+                <div className="rounded-xl bg-primary-50 p-3 dark:bg-primary-500/10">
+                  <div className="text-xs text-primary-700 dark:text-primary-300">Solved</div>
+                  <div className="font-display text-2xl font-semibold text-slate-900 dark:text-white">{solved}</div>
+                </div>
+              </div>
+
+              {currentPuzzle && (
+                <div className="grid grid-cols-2 gap-3 text-sm">
+                  <div>
+                    <div className="text-primary-700 dark:text-primary-300">Side to Move</div>
+                    <div className="font-semibold text-slate-900 dark:text-white">{sideToMove}</div>
                   </div>
-                  <div className="rounded-md border border-gray-200 p-3">
-                    <div className="text-xs text-gray-500">Solved</div>
-                    <div className="text-2xl font-bold">{solved}</div>
-                  </div>
-                </div>
-
-                {currentPuzzle && (
-                  <div className="grid grid-cols-2 gap-3 text-sm">
-                    <div>
-                      <div className="text-gray-500">Side to Move</div>
-                      <div className="font-semibold">{sideToMove}</div>
+                  <div>
+                    <div className="text-primary-700 dark:text-primary-300">
+                      {isWeaknessMode ? 'Est. Difficulty' : 'Puzzle Rating'}
                     </div>
-                    <div>
-                      <div className="text-gray-500">Puzzle Rating</div>
-                      <div className="font-semibold">{currentPuzzle.puzzle.rating}</div>
+                    <div className="font-semibold text-slate-900 dark:text-white">
+                      {currentPuzzle.rating ?? '—'}
                     </div>
                   </div>
-                )}
-
-                <div className="rounded-md bg-gray-50 p-3 text-sm text-gray-700">
-                  {status}
                 </div>
+              )}
 
-                {error && (
-                  <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-                    {error}
+              {miningProgress && (
+                <div className="space-y-2 rounded-xl border border-primary-200/80 bg-primary-50/80 p-3 dark:border-primary-500/30 dark:bg-primary-500/10">
+                  <div className="flex items-center justify-between gap-2 text-xs font-medium text-primary-800 dark:text-primary-200">
+                    <span>Scanning your games</span>
+                    <span>{miningPercent}%</span>
                   </div>
-                )}
-
-                {showHint && expectedMove && (
-                  <div className="rounded-md border border-yellow-200 bg-yellow-50 p-3 text-sm text-yellow-800">
-                    Try a move from <span className="font-mono">{expectedMove.slice(0, 2)}</span>.
+                  <div className="h-2 overflow-hidden rounded-full bg-white/80 dark:bg-slate-900/60">
+                    <div
+                      className="h-full rounded-full bg-primary-600 transition-all duration-300 dark:bg-primary-400"
+                      style={{ width: `${miningPercent}%` }}
+                    />
                   </div>
-                )}
+                  <p className="text-xs leading-5 text-slate-700 dark:text-slate-300">
+                    {miningProgress.message}
+                  </p>
+                  {miningProgress.candidatesTotal > 0 && (
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      {miningProgress.candidatesDone}/{miningProgress.candidatesTotal} moments ·{' '}
+                      {miningProgress.puzzlesFound} puzzles found
+                    </p>
+                  )}
+                </div>
+              )}
 
-                {currentPuzzle?.puzzle.themes && (
-                  <div className="flex flex-wrap gap-2">
-                    {currentPuzzle.puzzle.themes.slice(0, 5).map(theme => (
-                      <Badge key={theme} variant="secondary">
-                        {theme}
+              <div className="rounded-xl bg-slate-50 p-3 text-sm text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                {status}
+              </div>
+
+              {error && (
+                <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
+                  {error}
+                </div>
+              )}
+
+              {showHint && expectedMove && (
+                <div className="rounded-md border border-yellow-200 bg-yellow-50 p-3 text-sm text-yellow-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+                  Try a move from <span className="font-mono">{expectedMove.slice(0, 2)}</span>.
+                </div>
+              )}
+
+              {currentPuzzle?.themes && !isWeaknessMode && (
+                <div className="flex flex-wrap gap-2">
+                  {currentPuzzle.themes.slice(0, 5).map(theme => (
+                    <Badge key={theme} variant="secondary" className="bg-ink-100 text-ink-700 dark:bg-slate-800 dark:text-slate-200">
+                      {theme}
+                    </Badge>
+                  ))}
+                </div>
+              )}
+
+              <div className="grid grid-cols-2 gap-2">
+                <Button type="button" variant="outline" onClick={() => setShowHint(true)} disabled={!currentPuzzle || isSolved}>
+                  <Lightbulb className="mr-2 h-4 w-4" />
+                  Hint
+                </Button>
+                <Button type="button" variant="outline" onClick={showSolution} disabled={!currentPuzzle || isSolved}>
+                  <Eye className="mr-2 h-4 w-4" />
+                  Show
+                </Button>
+                <Button type="button" variant="outline" onClick={resetCurrentPuzzle} disabled={!currentPuzzle || isLoading}>
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  Reset
+                </Button>
+                <Button type="button" onClick={() => loadPuzzle()} disabled={!trainingConfig || isLoading}>
+                  <ArrowRight className="mr-2 h-4 w-4" />
+                  Next
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          {isWeaknessMode ? (
+            <Card className="aurora-subtle">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 font-display text-lg">
+                  <ShieldAlert className="h-5 w-5" />
+                  From your games
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3 text-sm">
+                {weakness ? (
+                  <>
+                    <div className="space-y-1">
+                      <div className="text-xs font-semibold uppercase tracking-[0.14em] text-primary-700 dark:text-primary-300">
+                        Source game
+                      </div>
+                      <div className="font-semibold text-slate-900 dark:text-white">
+                        vs {weakness.opponent}
+                      </div>
+                      <div className="text-slate-600 dark:text-slate-300">
+                        Move {weakness.moveNumber}
+                        {weakness.opening && weakness.opening !== 'Unknown' ? ` · ${weakness.opening}` : ''}
+                      </div>
+                      <div className="text-slate-500 dark:text-slate-400">
+                        {weakness.date} · {weakness.site}
+                        {' · '}
+                        {weakness.playerColor === 'white' ? 'White' : 'Black'}
+                      </div>
+                      {weakness.gameUrl && (
+                        <a
+                          href={weakness.gameUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex cursor-pointer items-center gap-1 text-primary-700 hover:underline dark:text-primary-300"
+                        >
+                          Open game
+                          <ExternalLink className="h-3.5 w-3.5" />
+                        </a>
+                      )}
+                    </div>
+
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800/80">
+                      <div className="text-xs font-semibold uppercase tracking-[0.14em] text-primary-700 dark:text-primary-300">
+                        Why this position
+                      </div>
+                      <p className="mt-1 leading-5 text-slate-700 dark:text-slate-200">
+                        {weakness.whySelected}
+                      </p>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2">
+                      <Badge
+                        variant="secondary"
+                        className="border-0 text-white"
+                        style={{ backgroundColor: classificationMeta[weakness.classification].color }}
+                      >
+                        {classificationMeta[weakness.classification].label}
+                        {classificationMeta[weakness.classification].glyph
+                          ? ` ${classificationMeta[weakness.classification].glyph}`
+                          : ''}
                       </Badge>
-                    ))}
-                  </div>
-                )}
+                      {typeof weakness.timeSpentSeconds === 'number' && (
+                        <Badge variant="outline" className="inline-flex items-center gap-1 border-primary-200 text-primary-800 dark:border-slate-600 dark:text-primary-200">
+                          <Clock3 className="h-3 w-3" />
+                          {formatSeconds(weakness.timeSpentSeconds)} think
+                        </Badge>
+                      )}
+                      {weakness.reasons.includes('long-think') && (
+                        <Badge variant="outline" className="border-amber-300 text-amber-800 dark:border-amber-500/40 dark:text-amber-200">
+                          Long think
+                        </Badge>
+                      )}
+                    </div>
 
-                <div className="grid grid-cols-2 gap-2">
-                  <Button type="button" variant="outline" onClick={() => setShowHint(true)} disabled={!currentPuzzle || isSolved}>
-                    <Lightbulb className="mr-2 h-4 w-4" />
-                    Hint
-                  </Button>
-                  <Button type="button" variant="outline" onClick={showSolution} disabled={!currentPuzzle || isSolved}>
-                    <Eye className="mr-2 h-4 w-4" />
-                    Show
-                  </Button>
-                  <Button type="button" variant="outline" onClick={resetCurrentPuzzle} disabled={!currentPuzzle || isLoading}>
-                    <RefreshCw className="mr-2 h-4 w-4" />
-                    Reset
-                  </Button>
-                  <Button type="button" onClick={() => loadPuzzle()} disabled={!trainingConfig || isLoading}>
-                    <ArrowRight className="mr-2 h-4 w-4" />
-                    Next
-                  </Button>
-                </div>
+                    <div className="grid grid-cols-2 gap-3 text-sm">
+                      <div>
+                        <div className="text-primary-700 dark:text-primary-300">You played</div>
+                        <div className="font-mono font-semibold text-slate-900 dark:text-white">
+                          {weakness.playedMoveSan}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-primary-700 dark:text-primary-300">Eval loss</div>
+                        <div className="font-semibold text-slate-900 dark:text-white">
+                          ~{Math.round(weakness.centipawnLoss)} cp
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <p className="text-slate-600 dark:text-slate-300">
+                    {isLoading
+                      ? 'Analyzing your last 20 games for long thinks and blunders…'
+                      : 'Source details appear once a weakness position is loaded.'}
+                  </p>
+                )}
               </CardContent>
             </Card>
-
-            <Card>
+          ) : (
+            <Card className="aurora-subtle">
               <CardHeader>
-                <CardTitle className="flex items-center gap-2 text-lg">
+                <CardTitle className="flex items-center gap-2 font-display text-lg">
                   <Trophy className="h-5 w-5" />
                   Targeting
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-2 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-gray-500">Category</span>
-                  <span className="font-medium">{selectedCategory ? puzzleService.getCategoryLabel(selectedCategory) : '-'}</span>
+                  <span className="text-primary-700 dark:text-primary-300">Category</span>
+                  <span className="font-medium text-slate-900 dark:text-white">
+                    {selectedCategory ? puzzleService.getCategoryLabel(selectedCategory) : '-'}
+                  </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-500">Lichess theme</span>
-                  <span className="font-medium">{trainingConfig?.angle}</span>
+                  <span className="text-primary-700 dark:text-primary-300">Lichess theme</span>
+                  <span className="font-medium text-slate-900 dark:text-white">{trainingConfig?.angle}</span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-500">Level</span>
-                  <span className="font-medium capitalize">{trainingConfig?.difficulty}</span>
+                  <span className="text-primary-700 dark:text-primary-300">Level</span>
+                  <span className="font-medium capitalize text-slate-900 dark:text-white">{trainingConfig?.difficulty}</span>
                 </div>
               </CardContent>
             </Card>
-          </div>
+          )}
         </div>
-      )}
+      </div>
     </div>
   );
 };

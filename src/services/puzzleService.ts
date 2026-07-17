@@ -1,19 +1,32 @@
 import { GameAnalysis } from '../types/analysis';
+import { ChessGame } from '../types/game';
 import {
   LichessPuzzleResponse,
   PuzzleDifficulty,
   PuzzleTrainingCategory,
-  PuzzleTrainingConfig
+  PuzzleTrainingConfig,
+  TrainerPuzzle,
+  WeaknessMiningProgress
 } from '../types/puzzle';
+import { weaknessPuzzleService } from './weaknessPuzzleService';
 
 const LICHESS_API_BASE = 'https://lichess.org/api';
 
 const CATEGORY_LABELS: Record<PuzzleTrainingCategory, string> = {
   'fix-weakness': 'Fix My Weaknesses',
-  'learn-mistakes': 'Learn From My Mistakes',
   'master-opening': 'Master My Openings',
   'master-endgames': 'Master My Endgames'
 };
+
+export interface PuzzleSessionContext {
+  analysis?: GameAnalysis | null;
+  platform?: 'lichess' | 'chess.com';
+  username?: string;
+  games?: ChessGame[];
+  rated?: boolean;
+  onWeaknessProgress?: (progress: WeaknessMiningProgress) => void;
+  signal?: AbortSignal;
+}
 
 class PuzzleService {
   getCategoryLabel(category: PuzzleTrainingCategory): string {
@@ -31,7 +44,34 @@ class PuzzleService {
     };
   }
 
-  async getNextPuzzle(config: PuzzleTrainingConfig): Promise<LichessPuzzleResponse> {
+  async getNextPuzzle(
+    config: PuzzleTrainingConfig,
+    context: PuzzleSessionContext = {}
+  ): Promise<TrainerPuzzle> {
+    if (config.category === 'fix-weakness') {
+      return this.getWeaknessPuzzle(context);
+    }
+
+    const lichessPuzzle = await this.fetchLichessPuzzle(config);
+    return this.toTrainerPuzzle(lichessPuzzle);
+  }
+
+  private async getWeaknessPuzzle(context: PuzzleSessionContext): Promise<TrainerPuzzle> {
+    if (!context.platform || !context.username) {
+      throw new Error('Connect and sync a chess account first so we can mine puzzles from your recent games.');
+    }
+
+    return weaknessPuzzleService.getNextWeaknessPuzzle({
+      platform: context.platform,
+      username: context.username,
+      games: context.games,
+      rated: context.rated,
+      onProgress: context.onWeaknessProgress,
+      signal: context.signal
+    });
+  }
+
+  private async fetchLichessPuzzle(config: PuzzleTrainingConfig): Promise<LichessPuzzleResponse> {
     const params = new URLSearchParams({
       angle: config.angle,
       difficulty: config.difficulty
@@ -58,6 +98,18 @@ class PuzzleService {
     return response.json();
   }
 
+  private toTrainerPuzzle(response: LichessPuzzleResponse): TrainerPuzzle {
+    return {
+      id: response.puzzle.id,
+      fen: '',
+      solution: response.puzzle.solution,
+      rating: response.puzzle.rating,
+      themes: response.puzzle.themes,
+      lichessPgn: response.game.pgn,
+      lichessGameId: response.game.id
+    };
+  }
+
   private getDifficultyForAccuracy(accuracy: number): PuzzleDifficulty {
     if (accuracy < 55) return 'easier';
     if (accuracy < 72) return 'normal';
@@ -68,9 +120,7 @@ class PuzzleService {
   private getAngleForCategory(category: PuzzleTrainingCategory, analysis?: GameAnalysis | null): string {
     switch (category) {
       case 'fix-weakness':
-        return analysis ? this.getWeaknessAngle(analysis) : 'mix';
-      case 'learn-mistakes':
-        return 'advantage';
+        return analysis ? 'from your games' : 'your recent games';
       case 'master-opening':
         return 'opening';
       case 'master-endgames':
@@ -78,16 +128,6 @@ class PuzzleService {
       default:
         return 'mix';
     }
-  }
-
-  private getWeaknessAngle(analysis: GameAnalysis): string {
-    const blunders = analysis.totalMistakes.white.blunders + analysis.totalMistakes.black.blunders;
-    const mistakes = analysis.totalMistakes.white.mistakes + analysis.totalMistakes.black.mistakes;
-    const inaccuracies = analysis.totalMistakes.white.inaccuracies + analysis.totalMistakes.black.inaccuracies;
-
-    if (blunders >= Math.max(mistakes, inaccuracies)) return 'hangingPiece';
-    if (mistakes >= inaccuracies) return 'defensiveMove';
-    return 'advantage';
   }
 }
 

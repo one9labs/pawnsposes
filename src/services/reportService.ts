@@ -1050,7 +1050,7 @@ ${report.improvementPlan.immediateActions.map(action => `- **${action.priority.t
               }
               
               /* Allow content to flow naturally across pages and optimize card spacing */
-              .bg-blue-50, .bg-green-50, .bg-purple-50, .bg-red-100, .bg-gray-50 {
+              .bg-primary-50, .bg-blue-50, .bg-green-50, .bg-purple-50, .bg-red-100, .bg-gray-50 {
                 page-break-inside: auto !important;
                 page-break-before: auto !important;
                 page-break-after: auto !important;
@@ -1665,7 +1665,7 @@ ${report.improvementPlan.immediateActions.map(action => `- **${action.priority.t
                 margin-top: 0.125rem !important;
               }
               
-              .bg-blue-600.h-2 {
+              .bg-primary-600.h-2, .bg-blue-600.h-2 {
                 height: 4px !important;
               }
               
@@ -1760,7 +1760,7 @@ ${report.improvementPlan.immediateActions.map(action => `- **${action.priority.t
               }
               
               /* Optimize recommendation cards */
-              .bg-blue-50.p-3 {
+              .bg-primary-50.p-3, .bg-blue-50.p-3 {
                 padding: 0.375rem !important;
                 margin-bottom: 0.25rem !important;
                 line-height: 1.3 !important;
@@ -1807,17 +1807,17 @@ ${report.improvementPlan.immediateActions.map(action => `- **${action.priority.t
               }
               
               /* Optimize improvement suggestion boxes */
-              .bg-blue-50.p-3.rounded-md {
+              .bg-primary-50.p-3.rounded-md, .bg-blue-50.p-3.rounded-md {
                 padding: 0.375rem !important;
                 margin-top: 0.25rem !important;
               }
               
-              .font-medium.text-blue-800.mb-1 {
+              .font-medium.text-primary-800.mb-1, .font-medium.text-blue-800.mb-1 {
                 margin-bottom: 0.0625rem !important;
                 line-height: 1.2 !important;
               }
               
-              .text-blue-700 {
+              .text-primary-700, .text-blue-700 {
                 line-height: 1.3 !important;
               }
               
@@ -1849,7 +1849,7 @@ ${report.improvementPlan.immediateActions.map(action => `- **${action.priority.t
               }
               
               /* Optimize header icons and text */
-              .text-blue-100 {
+              .text-primary-100, .text-blue-100 {
                 line-height: 1.2 !important;
               }
               
@@ -1912,7 +1912,7 @@ ${report.improvementPlan.immediateActions.map(action => `- **${action.priority.t
               position: fixed;
               top: 10px;
               right: 10px;
-              background: #2563eb;
+              background: #2c8a55;
               color: white;
               border: none;
               padding: 10px 20px;
@@ -1925,7 +1925,7 @@ ${report.improvementPlan.immediateActions.map(action => `- **${action.priority.t
             }
             
             .print-button:hover {
-              background: #1d4ed8;
+              background: #1f6d43;
             }
             
             @media print {

@@ -112,10 +112,14 @@ class ProfileAnalysisService {
     };
 
     await this.saveProfile(profile);
-    return this.refreshProfile(request.userId, true);
+    return this.refreshProfile(request.userId, true, { allGames: request.allGames });
   }
 
-  async refreshProfile(userId: string, forceAnalyze = false): Promise<ProfileRefreshResult> {
+  async refreshProfile(
+    userId: string,
+    forceAnalyze = false,
+    options?: { allGames?: boolean }
+  ): Promise<ProfileRefreshResult> {
     const profile = await this.loadProfile(userId);
     if (!profile) {
       throw new Error('Please add your chess username first.');
@@ -125,7 +129,8 @@ class ProfileAnalysisService {
       platform: profile.platform,
       username: profile.username,
       count: profile.gameLimit || DEFAULT_GAME_LIMIT,
-      rated: profile.rated
+      rated: profile.rated,
+      allGames: options?.allGames
     });
 
     const knownGameIds = new Set(profile.analyzedGameIds);

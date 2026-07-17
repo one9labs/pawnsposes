@@ -3,6 +3,7 @@ export interface GameReportRequest {
   username: string;
   gameCount: number;
   rated?: boolean;
+  allGames?: boolean;
 }
 
 export interface ExecutiveSummary {
