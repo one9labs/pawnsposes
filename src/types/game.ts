@@ -4,13 +4,16 @@ export interface ChessGame {
   white: {
     name: string;
     rating?: number;
+    result?: string;
   };
   black: {
     name: string;
     rating?: number;
+    result?: string;
   };
   result: '1-0' | '0-1' | '1/2-1/2' | '*';
   timeControl: string;
+  timeClass?: string;
   opening: {
     name: string;
     eco?: string;
@@ -29,12 +32,16 @@ export interface ChessGame {
     mistakes: number;
     inaccuracies: number;
   };
+  termination?: string;
 }
 
 export interface ImportGameRequest {
   platform: 'lichess' | 'chess.com';
   username: string;
+  /** Number of recent games to import. Ignored when `allGames` is true. */
   count?: number;
+  /** When true, fetch the player's full game history from the platform API. */
+  allGames?: boolean;
   rated?: boolean;
   allGames?: boolean;
   variant?: string;
